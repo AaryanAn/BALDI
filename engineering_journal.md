@@ -89,94 +89,47 @@ The exploration highlights that the central challenge is not merely tracking mot
 
 ---
 
-## Papers for Each Option:
-
+## Papers for Each Option (Literature Survey)
 1. Vision-Based Air Writing / Free-Space Handwriting
 
-Vision-Based Air-Writing Recognition System (IEEE, 2013)
-Zhang et al.
+Vision-Based Air-Writing Recognition System — Zhang et al., IEEE, 2013
 
-https://ieeexplore.ieee.org/document/6630852
+Air-Writing Recognition Using Deep Convolutional Neural Networks — Li et al., 2017
 
-Air-Writing Recognition Using Deep CNNs (2017)
-Li et al.
-
-https://arxiv.org/abs/1708.00707
-
-Real-Time Vision-Based Finger Tracking for Air Writing
-Xu et al., Pattern Recognition Letters
-
-https://www.sciencedirect.com/science/article/pii/S0167865518302862
+Real-Time Vision-Based Finger Tracking for Air Writing — Xu et al., Pattern Recognition Letters
 
 2. Explicit Marker / Tip Tracking (LED, Colored Tip, Pen)
 
-Learning OpenCV – Color & Marker Tracking (Bradski & Kaehler)
-(OpenCV reference, not a paper but canonical)
+Learning OpenCV — Bradski & Kaehler (color and marker tracking techniques)
 
-https://docs.opencv.org/4.x/d4/d73/tutorial_py_contours_begin.html
+Vision-Based Pen Tracking for Handwriting Recognition — Yeo et al., IEEE
 
-https://docs.opencv.org/4.x/df/d9d/tutorial_py_colorspaces.html
-
-Vision-Based Pen Tracking for Handwriting Recognition
-Yeo et al., IEEE
-
-https://ieeexplore.ieee.org/document/6189540
-
-Robust Marker-Based Motion Tracking Using a Single Camera (Sensors, 2019)
-
-https://www.mdpi.com/1424-8220/19/6/1328
+Robust Marker-Based Motion Tracking Using a Single Camera — Sensors, 2019
 
 3. Hybrid Tracking / Sensor Fusion
 
-A Survey of Computer Vision-Based Human Motion Capture
-Moeslund et al., CVIU
+A Survey of Computer Vision-Based Human Motion Capture — Moeslund et al., CVIU
 
-https://www.sciencedirect.com/science/article/pii/S107731420600109X
-
-Hybrid Gesture Recognition Using Marker and Skeleton Tracking
-Zhou et al.
-
-https://arxiv.org/abs/1905.09768
+Hybrid Gesture Recognition Using Marker and Skeleton Tracking — Zhou et al.
 
 4. Gesture Recognition / Theme-Park-Style Systems
 
-Gestures Without Libraries, Toolkits, or Training (CHI 2007)
-Wobbrock et al.
+Gestures Without Libraries, Toolkits, or Training — Wobbrock et al., CHI 2007
 
-https://dl.acm.org/doi/pdf/10.1145/1240624.1240714
-
-Improving Gesture Recognition Accuracy on Touch Screens
-Vatavu et al.
-
-https://www.cs.ucl.ac.uk/fileadmin/UCL-CS/research/Research_Notes/RN_14_02.pdf
+Improving Gesture Recognition Accuracy on Touch Screens — Vatavu et al.
 
 5. Trajectory Comparison & Accuracy Metrics
 
-Dynamic Time Warping Algorithm Optimization
-Sakoe & Chiba
-
-https://ieeexplore.ieee.org/document/1163055
+Dynamic Time Warping Algorithm Optimization — Sakoe & Chiba
 
 Hausdorff Distance for Shape Matching
 
-https://www.cs.cmu.edu/~efros/courses/LBMV07/Papers/hausdorff.pdf
-
 Spline-Based Curve Matching
-
-https://www.cs.cmu.edu/~jkh/lectures/curves.pdf
 
 6. Handwriting Learning & Stroke Analysis (Language Extension)
 
-Online and Offline Handwriting Recognition: A Comprehensive Survey
-Plamondon & Srihari
-
-https://ieeexplore.ieee.org/document/844058
+Online and Offline Handwriting Recognition: A Comprehensive Survey — Plamondon & Srihari
 
 Stroke-Based Character Evaluation for Handwriting Education
 
-https://www.researchgate.net/publication/282869719_Stroke-Based_Character_Evaluation_for_Handwriting_Education
-
-State of the Art in Online Handwriting Recognition
-Tappert et al.
-
-https://www.cse.iitb.ac.in/~pb/handwriting.pdf
+State of the Art in Online Handwriting Recognition — Tappert et al.
