@@ -95,91 +95,88 @@ The exploration highlights that the central challenge is not merely tracking mot
 
 Vision-Based Air-Writing Recognition System (IEEE, 2013)
 Zhang et al.
-📄 PDF:
+
 https://ieeexplore.ieee.org/document/6630852
 
 Air-Writing Recognition Using Deep CNNs (2017)
 Li et al.
-📄 PDF:
+
 https://arxiv.org/abs/1708.00707
 
 Real-Time Vision-Based Finger Tracking for Air Writing
 Xu et al., Pattern Recognition Letters
-📄 PDF:
+
 https://www.sciencedirect.com/science/article/pii/S0167865518302862
 
 2. Explicit Marker / Tip Tracking (LED, Colored Tip, Pen)
 
 Learning OpenCV – Color & Marker Tracking (Bradski & Kaehler)
 (OpenCV reference, not a paper but canonical)
-📘 Online chapters:
+
 https://docs.opencv.org/4.x/d4/d73/tutorial_py_contours_begin.html
 
 https://docs.opencv.org/4.x/df/d9d/tutorial_py_colorspaces.html
 
 Vision-Based Pen Tracking for Handwriting Recognition
 Yeo et al., IEEE
-📄 PDF:
+
 https://ieeexplore.ieee.org/document/6189540
 
 Robust Marker-Based Motion Tracking Using a Single Camera (Sensors, 2019)
-📄 PDF (open access):
+
 https://www.mdpi.com/1424-8220/19/6/1328
 
 3. Hybrid Tracking / Sensor Fusion
 
 A Survey of Computer Vision-Based Human Motion Capture
 Moeslund et al., CVIU
-📄 PDF:
+
 https://www.sciencedirect.com/science/article/pii/S107731420600109X
 
 Hybrid Gesture Recognition Using Marker and Skeleton Tracking
 Zhou et al.
-📄 PDF:
+
 https://arxiv.org/abs/1905.09768
 
 4. Gesture Recognition / Theme-Park-Style Systems
 
 Gestures Without Libraries, Toolkits, or Training (CHI 2007)
 Wobbrock et al.
-📄 PDF:
+
 https://dl.acm.org/doi/pdf/10.1145/1240624.1240714
 
 Improving Gesture Recognition Accuracy on Touch Screens
 Vatavu et al.
-📄 PDF:
+
 https://www.cs.ucl.ac.uk/fileadmin/UCL-CS/research/Research_Notes/RN_14_02.pdf
 
 5. Trajectory Comparison & Accuracy Metrics
 
 Dynamic Time Warping Algorithm Optimization
 Sakoe & Chiba
-📄 PDF:
+
 https://ieeexplore.ieee.org/document/1163055
 
-(preprint)
-https://www.ee.columbia.edu/~dpwe/resources/matlab/dtw/dtw.pdf
-
 Hausdorff Distance for Shape Matching
-📄 PDF (overview + examples):
+
 https://www.cs.cmu.edu/~efros/courses/LBMV07/Papers/hausdorff.pdf
 
 Spline-Based Curve Matching
-📄 PDF:
+
 https://www.cs.cmu.edu/~jkh/lectures/curves.pdf
 
 6. Handwriting Learning & Stroke Analysis (Language Extension)
 
 Online and Offline Handwriting Recognition: A Comprehensive Survey
 Plamondon & Srihari
-📄 PDF:
+
 https://ieeexplore.ieee.org/document/844058
 
 Stroke-Based Character Evaluation for Handwriting Education
-📄 PDF:
+
 https://www.researchgate.net/publication/282869719_Stroke-Based_Character_Evaluation_for_Handwriting_Education
 
 State of the Art in Online Handwriting Recognition
 Tappert et al.
-📄 PDF:
+
 https://www.cse.iitb.ac.in/~pb/handwriting.pdf
