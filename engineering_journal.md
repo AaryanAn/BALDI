@@ -133,3 +133,97 @@ Online and Offline Handwriting Recognition: A Comprehensive Survey — Plamondon
 Stroke-Based Character Evaluation for Handwriting Education
 
 State of the Art in Online Handwriting Recognition — Tappert et al.
+
+# Engineering Journal Entry - January 23, 2026
+## Exploration of an Infrared (IR) + Computer Vision Hybrid Approach
+
+### Motivation for IR + CV Integration
+
+One of the fundamental challenges identified in free-space writing is the reliable localization of the drawing point under varying environmental conditions. Pure RGB computer vision approaches are sensitive to lighting changes, background clutter, occlusion, and color ambiguity. These limitations become increasingly problematic when the system is expected to evaluate fine-grained handwriting accuracy rather than coarse gesture recognition.
+
+To address these issues, an alternative approach involving the integration of infrared (IR) sensing with conventional computer vision was explored. The motivation behind this approach is to decouple the task of identifying the drawing point from the complexities of the visible spectrum, while still leveraging camera-based spatial reasoning and visualization.
+
+---
+
+### Conceptual Overview of the IR + CV Approach
+
+In an IR + CV system, the drawing instrument (e.g., wand or pen) is augmented with an IR-emitting or IR-reflective tip. An IR-sensitive camera or IR-filtered camera stream is used to isolate this signal, while a standard RGB camera (or RGB channel from the same camera) provides contextual information such as hand pose, scene geometry, and user feedback overlays.
+
+The system thus operates on two complementary data streams:
+- **IR channel**: Provides high-contrast, low-noise localization of the drawing tip  
+- **RGB channel**: Provides contextual visual information for visualization, UI, and optional hand or body tracking  
+
+The fusion of these channels allows the system to separate *precision tracking* from *semantic understanding*.
+
+---
+
+### Advantages of IR-Based Tip Tracking
+
+Using IR significantly improves the robustness of drawing-point detection. Because IR light is largely invisible to the human eye and less common in ambient environments, the IR signal can be isolated with high confidence using simple thresholding techniques.
+
+Key advantages include:
+- Reduced sensitivity to ambient lighting variations  
+- Minimal interference from background textures and colors  
+- Clear separation between the drawing tip and the rest of the scene  
+- Stable detection even during fast motion  
+
+This makes IR particularly well-suited for handwriting evaluation, where small spatial deviations may meaningfully affect perceived correctness.
+
+---
+
+### Role of Computer Vision in the Hybrid System
+
+While IR provides accurate positional data, computer vision remains essential for higher-level reasoning and interaction. CV techniques can be used to:
+- Infer stroke boundaries using motion cues  
+- Normalize trajectories based on hand orientation or writing direction  
+- Provide real-time visual feedback and overlays  
+- Support optional gesture recognition modes  
+
+Importantly, the CV component does not need to solve the hardest tracking problem, allowing simpler and more reliable algorithms to be used.
+
+---
+
+### Data Fusion and System Design Considerations
+
+The IR + CV approach introduces the need for data fusion between two sensing modalities. However, this fusion can be lightweight rather than complex. In many cases, the IR-derived coordinates can be treated as the authoritative drawing trajectory, while CV-derived data is used only to augment interpretation.
+
+Potential fusion strategies include:
+- Temporal alignment of IR points with RGB frames  
+- Using CV-derived motion cues to segment strokes in IR trajectories  
+- Applying filtering (e.g., exponential smoothing or Kalman filtering) to the IR signal before comparison  
+
+This design avoids full sensor fusion complexity while still benefiting from multi-modal sensing.
+
+---
+
+### Comparison with Other Approaches
+
+Compared to pure CV tracking, the IR + CV approach offers substantially improved robustness and precision, especially in cluttered or poorly lit environments. Compared to marker-based RGB tracking, IR provides better signal isolation without relying on color contrast, which may vary across environments.
+
+Unlike theme-park-style gesture systems, which emphasize intent recognition over exact geometric accuracy, IR + CV supports detailed shape analysis and stroke-level evaluation. This makes it more appropriate for handwriting learning applications.
+
+---
+
+### Applicability to Language Learning and Educational Use
+
+The IR + CV approach aligns strongly with the language-learning extension of the project. Accurate trajectory capture enables:
+- Stroke order validation  
+- Proportion and curvature analysis  
+- Directional correctness evaluation  
+- Visual feedback highlighting specific deviations  
+
+Because the IR signal provides consistent data across users, comparisons against symbolic templates become more reliable and interpretable.
+
+---
+
+### Feasibility and Practical Constraints
+
+From an implementation perspective, the IR + CV approach remains feasible within the scope of a senior design project. It does not require specialized motion-capture hardware and can be implemented using consumer-grade cameras and simple IR emitters or reflective materials.
+
+The added hardware complexity is minimal, while the gains in data quality significantly reduce downstream algorithmic difficulty.
+
+---
+
+### Conclusion
+
+The integration of infrared sensing with computer vision represents a principled compromise between robustness and complexity. By using IR for precise trajectory acquisition and CV for contextual understanding and feedback, the system achieves a modular and extensible design. This approach preserves novelty while remaining technically manageable and well-aligned with both entertainment-driven and educational use cases.
