@@ -8,8 +8,6 @@ import time
 import math
 
 
-
-
 class Gestures:
     def __init__(self, model_path="hand_landmarker.task"):
         base_options = python.BaseOptions(model_asset_path=model_path)
@@ -27,7 +25,6 @@ class Gestures:
 
         self.STILL_THRESHOLD = 10        # pixels of movement
         self.STILL_TIME_REQUIRED = 0.75  # seconds
-
 
     def detect_index_fingertip(self, frame_bgr):
         """
@@ -56,7 +53,7 @@ class Gestures:
 
         x_px = int(fingertip.x * width)
         y_px = int(fingertip.y * height)
-        
+
         point = (x_px, y_px)
 
         self.update_path(point)
@@ -64,15 +61,14 @@ class Gestures:
         # Draw lines
         for i in range(1, len(self.path)):
             cv2.line(rgb_frame,
-                    self.path[i - 1],
-                    self.path[i],
-                    (0, 255, 255),
-                    3)
+                     self.path[i - 1],
+                     self.path[i],
+                     (0, 255, 255),
+                     3)
 
         # Draw dot
         color = (0, 0, 255) if self.drawing else (0, 255, 0)
-        cv2.circle(frame_bgr, (x_px, y_px), 15, color, -1)
-
+        cv2.circle(frame_bgr, (x_px, y_px), 6, color, -1)
 
         return frame_bgr, (x_px, y_px)
 
@@ -92,8 +88,6 @@ class Gestures:
             if self.still_start_time is None:
                 self.still_start_time = now
             elif now - self.still_start_time > self.STILL_TIME_REQUIRED:
-                # Toggle drawing mode
-                self.path = []
                 self.drawing = not self.drawing
                 self.still_start_time = None
         else:
@@ -104,3 +98,7 @@ class Gestures:
                 self.path.append(point)
 
         self.prev_point = point
+
+    def clear_path(self):
+        self.path = []
+        self.drawing = False

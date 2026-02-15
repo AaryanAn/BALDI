@@ -33,7 +33,7 @@ def process_frame():
     _, buffer = cv2.imencode(
         ".jpg",
         annotated_frame,
-        [int(cv2.IMWRITE_JPEG_QUALITY), 65],
+        [int(cv2.IMWRITE_JPEG_QUALITY), 85],
     )
 
     return base64.b64encode(buffer).decode("utf-8")
@@ -47,7 +47,7 @@ async def background_capture():
         if frame:
             latest_frame = frame
 
-        await asyncio.sleep(0.03)
+        await asyncio.sleep(0.02)
 
 
 @app.on_startup
@@ -62,24 +62,27 @@ def shutdown():
 
 @ui.page("/")
 def main_page():
-    ui.query("body").style(
-        "margin:0; padding:0; overflow:hidden; background:black;"
-    )
+    with ui.row():
+        with ui.card():
 
-    image = ui.interactive_image().style(
-        "height:100vh;"
-        "object-fit:cover;"
-        "display:block;"
-        "margin:auto;"
-    )
-
-    def update():
-        if latest_frame:
-            image.set_source(
-                f"data:image/jpeg;base64,{latest_frame}"
+            image = ui.interactive_image().style(
+                "height:90vh;"
             )
 
-    ui.timer(0.05, update)
+            def update():
+                if latest_frame:
+                    image.set_source(
+                        f"data:image/jpeg;base64,{latest_frame}"
+                    )
 
-
-ui.run()
+            ui.timer(0.03, update)
+            
+        
+        with ui.card():
+            ui.label("Welcome to BALDI Handwriting")
+            
+            def clear_drawing():
+                tracker.clear_path()
+                ui.notify('Path cleared!')
+            
+            ui.button('Clear Drawing', on_click= clear_drawing)
