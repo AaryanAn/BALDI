@@ -5,9 +5,14 @@ import cv2
 from nicegui import ui, app
 from gestures.gestures import Gestures
 
+from pathlib import Path
+
+
+srcDir = Path(__file__).resolve().parent.parent
+path = str(srcDir / "gestures/hand_landmarker.task")
 
 cap = cv2.VideoCapture(0)
-tracker = Gestures("gestures/hand_landmarker.task")
+tracker = Gestures(path)
 
 latest_frame = None
 
