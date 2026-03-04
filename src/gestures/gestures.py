@@ -1,6 +1,7 @@
 import cv2
 import mediapipe as mp
 import numpy as np
+import pandas as pd
 
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
@@ -18,8 +19,10 @@ class Gestures:
         )
 
         self.detector = vision.HandLandmarker.create_from_options(options)
+
         self.prev_point = None
-        self.path = []
+        self.paths = []            # Stores ALL completed paths
+        self.current_path = None   # The path currently being drawn
         self.drawing = False
         self.still_start_time = None
 
@@ -58,15 +61,16 @@ class Gestures:
 
         self.update_path(point)
 
-        # Draw lines
-        for i in range(1, len(self.path)):
-            cv2.line(rgb_frame,
-                     self.path[i - 1],
-                     self.path[i],
-                     (0, 255, 255),
-                     3)
+        # Draw ALL stored paths
+        for path in self.paths:
+            for i in range(1, len(path)):
+                cv2.line(frame_bgr,
+                         path[i - 1],
+                         path[i],
+                         (0, 255, 255),
+                         3)
 
-        # Draw dot
+        # Draw fingertip dot
         color = (0, 0, 255) if self.drawing else (0, 255, 0)
         cv2.circle(frame_bgr, (x_px, y_px), 6, color, -1)
 
@@ -81,7 +85,7 @@ class Gestures:
 
         dx = point[0] - self.prev_point[0]
         dy = point[1] - self.prev_point[1]
-        distance = math.sqrt(dx*dx + dy*dy)
+        distance = math.sqrt(dx * dx + dy * dy)
 
         # If finger is mostly still
         if distance < self.STILL_THRESHOLD:
@@ -90,15 +94,26 @@ class Gestures:
             elif now - self.still_start_time > self.STILL_TIME_REQUIRED:
                 self.drawing = not self.drawing
                 self.still_start_time = None
+
+                # If drawing just turned ON → start new path
+                if self.drawing:
+                    self.current_path = []
+                    self.paths.append(self.current_path)
+
         else:
             # Reset still timer
             self.still_start_time = None
 
-            if self.drawing:
-                self.path.append(point)
+            if self.drawing and self.current_path is not None:
+                self.current_path.append(point)
 
         self.prev_point = point
 
     def clear_path(self):
-        self.path = []
+        print(self.paths[0])
+        save_data = np.array(self.paths[0])
+        
+        # np.savetxt('../samples/sample1.csv', save_data, delimiter=',')
+        self.paths = []
+        self.current_path = None
         self.drawing = False

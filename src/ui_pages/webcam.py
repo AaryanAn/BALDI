@@ -21,13 +21,14 @@ def process_frame():
 
     annotated_frame, fingertip = tracker.detect_index_fingertip(frame)
 
-        # Draw path
-    for i in range(1, len(tracker.path)):
-        cv2.line(annotated_frame,
-                tracker.path[i - 1],
-                tracker.path[i],
-                (0, 255, 255),
-                3)
+    # Draw path
+    for path in tracker.paths:    
+        for i in range(1, len(path)):
+            cv2.line(annotated_frame,
+                    path[i - 1],
+                    path[i],
+                    (0, 255, 255),
+                    3)
 
     
     _, buffer = cv2.imencode(
