@@ -6,6 +6,7 @@ __pycache__/
 
 # local progress notes (not source-controlled)
 progress/
+TEMPLATE_COLLECTOR_TEAM.md
 
 # runtime logs and local data (not required in git)
 logs/

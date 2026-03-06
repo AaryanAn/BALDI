@@ -13,15 +13,19 @@ from gestures.gestures import Gestures
 
 src_dir = Path(__file__).resolve().parent.parent
 model_path = str(src_dir / "gestures/hand_landmarker.task")
-templates_dir = src_dir / "templates"
+
+# Collector writes into a separate templates directory so that
+# each teammate can commit their own samples on their branch.
+templates_dir = src_dir / "team_templates"
 templates_dir.mkdir(parents=True, exist_ok=True)
+
 logs_dir = src_dir / "logs"
 logs_dir.mkdir(parents=True, exist_ok=True)
 log_file = logs_dir / "collector_templates.jsonl"
 
 
-# Reuse the same template location used by the main app,
-# so collected samples immediately improve predictions.
+# Collector uses its own directory; curated samples can later be
+# copied/merged into the main app's template set.
 collector_cap = cv2.VideoCapture(0)
 collector_tracker = Gestures(model_path)
 collector_evaluator = LetterEvaluator(templates_dir)
