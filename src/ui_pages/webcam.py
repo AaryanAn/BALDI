@@ -68,27 +68,39 @@ def shutdown():
 
 @ui.page("/")
 def main_page():
-    with ui.row():
-        with ui.card():
+    with ui.header().classes('bg-primary items-center justify_between'):
+        ui.label("Welcome to BALDI Handwriting").classes("text-h5 font-bold items-center justify-between")
+        
+        with ui.tabs().classes("absolute-center") as tabs: 
+            recordTab = ui.tab("New Recording")
+            previousRecordingsTab = ui.tab("Previous Recordings")
 
-            image = ui.interactive_image().style(
-                "height:90vh;"
-            )
 
-            def update():
-                if latest_frame:
-                    image.set_source(
-                        f"data:image/jpeg;base64,{latest_frame}"
+    with ui.tab_panels(tabs, value=recordTab).classes("w-full"):
+        with ui.tab_panel(recordTab):
+            with ui.row():
+                with ui.card().classes("w-full justify-center items-center"):
+
+                    image = ui.interactive_image().style(
+                        "height:90vh;"
                     )
 
-            ui.timer(0.03, update)
-            
+                    def update():
+                        if latest_frame:
+                            image.set_source(
+                                f"data:image/jpeg;base64,{latest_frame}"
+                            )
+
+                    ui.timer(0.03, update)
+                
+                def clear_drawing():
+                    tracker.clear_path()
+                    ui.notify('Path cleared!')           
+                ui.button('Clear Drawing', on_click= clear_drawing)
+
+                with ui.card():
+                    ui.label("Please select your language:")
+                    ui.toggle(["English", "Arabic"], value="English")
         
-        with ui.card():
-            ui.label("Welcome to BALDI Handwriting")
-            
-            def clear_drawing():
-                tracker.clear_path()
-                ui.notify('Path cleared!')
-            
-            ui.button('Clear Drawing', on_click= clear_drawing)
+        with ui.tab_panel(previousRecordingsTab):
+            ui.label("Previous recordings")

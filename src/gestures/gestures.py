@@ -110,7 +110,7 @@ class Gestures:
         self.prev_point = point
 
     def clear_path(self):
-        print(self.paths[0])
+        # print(self.paths[0])
         save_data = np.array(self.paths[0])
         
         # np.savetxt('../samples/sample1.csv', save_data, delimiter=',')
