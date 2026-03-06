@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -23,7 +24,6 @@ log_file = logs_dir / "evaluations.jsonl"
 if not list(templates_dir.glob("*/*.npy")):
     try:
         from evaluation.font_templates import build_font_templates
-
         build_font_templates()
     except Exception:
         pass
@@ -33,6 +33,7 @@ tracker = Gestures(path)
 evaluator = LetterEvaluator(templates_dir)
 
 latest_frame = None
+SHOW_IMAGE_MODEL = os.getenv("BALDI_SHOW_IMAGE_MODEL", "").strip() in {"1", "true", "True", "yes", "YES"}
 
 
 def process_frame():
@@ -111,8 +112,13 @@ def main_page():
                     ui.label("Please select your language:")
                     ui.toggle(["English", "Arabic"], value="English")
 
-                    label_input = ui.input("Letter label")
-                    score_label = ui.label("")
+                    label_input = ui.input("Letter label (optional)").props("clearable")
+                    predicted_label = ui.label("")
+                    topk_label = ui.label("").classes("text-sm text-grey-7")
+                    score_label = ui.label("").classes("text-sm text-grey-7")
+                    image_pred_label = ui.label("").classes("text-sm text-grey-7")
+                    if not SHOW_IMAGE_MODEL:
+                        image_pred_label.set_visibility(False)
 
                     def save_template():
                         label = label_input.value or ""
@@ -137,31 +143,85 @@ def main_page():
                             ui.notify("No path to evaluate")
                             return
 
-                        result = evaluator.evaluate(label, traj)
+                        pred = evaluator.predict(traj, top_k=3)
+                        if pred.get("predicted_label") is None:
+                            conf = pred.get("confidence")
+                            conf_txt = "" if conf is None else f" ({conf*100:.0f}%)"
+                            predicted_label.text = f"Predicted: Uncertain{conf_txt}"
+                        else:
+                            conf = pred.get("confidence") or 0.0
+                            predicted_label.text = f"Predicted: {pred['predicted_label']} ({conf*100:.0f}%)"
+
+                        try:
+                            top = pred.get("top") or []
+                            if top:
+                                items = [f"{t['label']} s={t['score']:.2f} d={t['distance']:.3f}" for t in top]
+                                gap = None
+                                if pred.get("best_distance") is not None and pred.get("second_distance") is not None:
+                                    gap = float(pred["second_distance"] - pred["best_distance"])
+                                gap_txt = "" if gap is None else f"  gap={gap:.3f}"
+                                topk_label.text = "Top: " + ", ".join(items) + gap_txt
+                            else:
+                                topk_label.text = ""
+                        except Exception:
+                            topk_label.text = ""
+
+                        result = None
+                        if label.strip():
+                            result = evaluator.evaluate(label, traj)
+
+                        image_pred = None
+                        if SHOW_IMAGE_MODEL:
+                            try:
+                                from evaluation.letters_image import predict_from_trajectory
+
+                                image_pred = predict_from_trajectory(traj)
+                            except Exception:
+                                image_pred = {"available": False}
+
+                            if image_pred.get("available"):
+                                pred = image_pred["predicted_label"]
+                                conf = image_pred.get("confidence")
+                                image_pred_label.text = f"Image model: {pred} ({conf:.2f})"
+                            else:
+                                image_pred_label.text = "Image model: not loaded (train with .venv-train)"
+
                         try:
                             record = {
                                 "ts": datetime.utcnow().isoformat(),
                                 "label": label,
-                                "score": result.get("score"),
-                                "distance": result.get("distance"),
-                                "has_templates": result.get("has_templates"),
-                                "num_templates": result.get("num_templates"),
+                                "score": result.get("score") if result else None,
+                                "distance": result.get("distance") if result else None,
+                                "has_templates": result.get("has_templates") if result else None,
+                                "num_templates": result.get("num_templates") if result else None,
+                                "predicted": pred.get("predicted_label"),
+                                "pred_conf": pred.get("confidence"),
+                                "pred_best_dist": pred.get("best_distance"),
+                                "pred_top": pred.get("top"),
+                                "image_pred": image_pred.get("predicted_label") if image_pred else None,
+                                "image_conf": image_pred.get("confidence") if image_pred else None,
                             }
                             with open(log_file, "a") as f:
                                 f.write(json.dumps(record) + "\n")
                         except Exception:
                             pass
 
-                        if not result["has_templates"]:
+                        if not label.strip():
+                            score_label.text = ""
+                            ui.notify("Prediction done")
+                            return
+
+                        if result and not result["has_templates"]:
                             score_label.text = (
                                 f"No template for '{label}'. Use a letter in A–Z / a–z, or save your drawing as a template."
                             )
                             ui.notify("No template for this letter")
                             return
 
-                        score = result["score"]
-                        n = result["num_templates"]
-                        score_label.text = f"Score: {score:.2f}  ({n} template{'s' if n != 1 else ''} for this letter)"
+                        if result:
+                            score = result["score"]
+                            n = result["num_templates"]
+                            score_label.text = f"Similarity vs '{label}': {score:.2f}  ({n} template{'s' if n != 1 else ''})"
                         ui.notify("Evaluation done")
 
                     def clear_drawing():
@@ -197,9 +257,26 @@ def main_page():
                         rec = json.loads(line)
                         ts = rec.get("ts", "")
                         lbl = rec.get("label", "")
+                        predicted = rec.get("predicted")
+                        pred_conf = rec.get("pred_conf")
+                        pred_top = rec.get("pred_top")
                         sc = rec.get("score", None)
                         dist = rec.get("distance", None)
-                        ui.label(f"{ts}  label={lbl}  score={sc}  dist={dist}").classes("text-sm")
+                        img_pred = rec.get("image_pred")
+                        img_conf = rec.get("image_conf")
+                        extra = f"  img={img_pred} ({img_conf})" if img_pred is not None else ""
+                        pred_extra = (
+                            f"  predicted={predicted} ({pred_conf:.2f})" if predicted is not None and pred_conf is not None else ""
+                        )
+                        top_extra = ""
+                        if isinstance(pred_top, list) and pred_top:
+                            try:
+                                top_extra = "  top=" + ",".join(
+                                    [f"{t.get('label')}:{float(t.get('score') or 0.0):.2f}" for t in pred_top[:3]]
+                                )
+                            except Exception:
+                                top_extra = ""
+                        ui.label(f"{ts}  label={lbl}  score={sc}  dist={dist}{pred_extra}{top_extra}{extra}").classes("text-sm")
                     except Exception:
                         continue
 

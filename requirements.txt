@@ -1,3 +1,7 @@
+# BALDI dependencies
+# App: nicegui, opencv-python, mediapipe, numpy, pillow
+# Trajectory/ML: scipy, tensorflow, keras (see requirements-train.txt for a clean training env)
+# Optional: kaggle (for downloading Kaggle datasets via CLI)
 absl-py==2.4.0
 aiofiles==25.1.0
 aiohappyeyeballs==2.6.1
@@ -122,7 +126,7 @@ python-engineio==4.13.1
 python-json-logger==4.0.0
 python-multipart==0.0.22
 python-socketio==5.16.1
-pywinpty==3.0.3
+pywinpty==3.0.3; platform_system == "Windows"
 PyYAML==6.0.3
 pyzmq==27.1.0
 referencing==0.37.0

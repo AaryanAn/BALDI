@@ -1,4 +1,19 @@
 .venv
+.venv-train
 
 __pycache__/
 *.pyc
+
+# local progress notes (not source-controlled)
+progress/
+
+# runtime logs and local data (not required in git)
+logs/
+src/logs/*.jsonl
+
+# downloaded / generated datasets and large artifacts
+data/
+external_data/
+
+# local scripts output, models, etc. (keep code, avoid big binaries by default)
+*.keras
