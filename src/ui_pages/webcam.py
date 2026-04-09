@@ -28,6 +28,16 @@ if not list(templates_dir.glob("*/*.npy")):
     except Exception:
         pass
 
+# Build Arabic letter templates if not already present
+try:
+    from arabic.arabic_utils import ARABIC_LETTERS
+    arabic_chars = set(ARABIC_LETTERS.values())
+    if not any((templates_dir / ch).exists() for ch in arabic_chars):
+        from evaluation.arabic_font_templates import build_arabic_font_templates
+        build_arabic_font_templates()
+except Exception:
+    pass
+
 cap = cv2.VideoCapture(0)
 tracker = Gestures(path)
 evaluator = LetterEvaluator(templates_dir)
@@ -46,7 +56,7 @@ def process_frame():
     annotated_frame, fingertip = tracker.detect_index_fingertip(frame)
 
     # Draw path
-    for path in tracker.paths:    
+    for path in tracker.paths:
         for i in range(1, len(path)):
             cv2.line(annotated_frame,
                     path[i - 1],
@@ -54,7 +64,7 @@ def process_frame():
                     (0, 255, 255),
                     3)
 
-    
+
     _, buffer = cv2.imencode(".jpg", annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
 
     return base64.b64encode(buffer).decode("utf-8")
@@ -110,7 +120,7 @@ def main_page():
                     )
 
                     ui.label("Please select your language:")
-                    ui.toggle(["English", "Arabic"], value="English")
+                    language_toggle = ui.toggle(["English", "Arabic"], value="English")
 
                     label_input = ui.input("Letter label (optional)").props("clearable")
                     predicted_label = ui.label("")
@@ -119,6 +129,9 @@ def main_page():
                     image_pred_label = ui.label("").classes("text-sm text-grey-7")
                     if not SHOW_IMAGE_MODEL:
                         image_pred_label.set_visibility(False)
+
+                    # Mutable dict shared between run_evaluation and the Arabic word builder
+                    last_pred: dict = {}
 
                     def save_template():
                         label = label_input.value or ""
@@ -143,7 +156,17 @@ def main_page():
                             ui.notify("No path to evaluate")
                             return
 
-                        pred = evaluator.predict(traj, top_k=3)
+                        if language_toggle.value == "Arabic":
+                            from arabic.arabic_utils import ARABIC_LETTERS
+                            arabic_labels = list(set(ARABIC_LETTERS.values()))
+                            pred = evaluator.predict(traj, labels=arabic_labels, top_k=3, collapse_case=False)
+                        else:
+                            pred = evaluator.predict(traj, top_k=3)
+
+                        # Store for Arabic word builder
+                        last_pred.clear()
+                        last_pred.update(pred)
+
                         if pred.get("predicted_label") is None:
                             conf = pred.get("confidence")
                             conf_txt = "" if conf is None else f" ({conf*100:.0f}%)"
@@ -194,10 +217,10 @@ def main_page():
                                 "distance": result.get("distance") if result else None,
                                 "has_templates": result.get("has_templates") if result else None,
                                 "num_templates": result.get("num_templates") if result else None,
-                                "predicted": pred.get("predicted_label"),
-                                "pred_conf": pred.get("confidence"),
-                                "pred_best_dist": pred.get("best_distance"),
-                                "pred_top": pred.get("top"),
+                                "predicted": last_pred.get("predicted_label"),
+                                "pred_conf": last_pred.get("confidence"),
+                                "pred_best_dist": last_pred.get("best_distance"),
+                                "pred_top": last_pred.get("top"),
                                 "image_pred": image_pred.get("predicted_label") if image_pred else None,
                                 "image_conf": image_pred.get("confidence") if image_pred else None,
                             }
@@ -231,6 +254,113 @@ def main_page():
                     ui.button("Save as template", on_click=save_template)
                     ui.button("Evaluate", on_click=run_evaluation)
                     ui.button("Clear Drawing", on_click=clear_drawing)
+
+                    #  Arabic letter by letter word builder
+                    arabic_queue: list[str] = []
+
+                    with ui.column().classes("w-full gap-2") as arabic_section:
+                        ui.separator()
+                        ui.label("Arabic Word Builder").classes("text-subtitle2 font-bold")
+                        ui.label(
+                            "Draw each letter → Evaluate → Add Letter to Word. "
+                            "Repeat, then Combine."
+                        ).classes("text-caption text-grey-7")
+
+                        arabic_manual_input = ui.input(
+                            "Override letter (Unicode or name, e.g. ب or 'ba')"
+                        ).props("clearable dense")
+
+                        queue_display = ui.label("Queue: (empty)").classes("text-sm text-grey-8")
+
+                        combined_word = ui.label("").style(
+                            "font-size: 2.5rem; direction: rtl; "
+                            "font-family: 'Amiri', 'Traditional Arabic', Arial, sans-serif; "
+                            "letter-spacing: 4px; min-height: 3rem;"
+                        )
+
+                        def _update_queue_display():
+                            if arabic_queue:
+                                queue_display.text = "Queue: " + "  ·  ".join(arabic_queue)
+                            else:
+                                queue_display.text = "Queue: (empty)"
+
+                        def add_letter_to_word():
+                            from arabic.arabic_utils import resolve_arabic_letter
+
+                            # Manual override takes priority over auto-prediction
+                            raw = (arabic_manual_input.value or "").strip()
+                            if not raw:
+                                if not last_pred:
+                                    ui.notify(
+                                        "Evaluate a drawing first, or type a letter in the override field",
+                                        type="warning",
+                                    )
+                                    return
+                                # Use confident prediction, or fall back to best-match top[0]
+                                raw = last_pred.get("predicted_label") or ""
+                                if not raw:
+                                    top = last_pred.get("top") or []
+                                    if top:
+                                        raw = top[0]["label"]
+                                        ui.notify(
+                                            f"Prediction was uncertain — using best match '{raw}'",
+                                            type="info",
+                                        )
+
+                            if not raw:
+                                ui.notify(
+                                    "Evaluate a drawing first, or type a letter in the override field",
+                                    type="warning",
+                                )
+                                return
+
+                            ch = resolve_arabic_letter(raw)
+                            if ch is None:
+                                ui.notify(
+                                    f"'{raw}' is not a recognised Arabic letter. "
+                                    "Use a Unicode character (e.g. ب) or a name (e.g. 'ba').",
+                                    type="negative",
+                                )
+                                return
+
+                            arabic_queue.append(ch)
+                            _update_queue_display()
+                            arabic_manual_input.set_value("")
+                            ui.notify(f"Added '{ch}' to word")
+
+                        def combine_letters():
+                            from arabic.arabic_utils import join_arabic_letters
+
+                            if not arabic_queue:
+                                ui.notify("Queue is empty — add letters first", type="warning")
+                                return
+                            word = join_arabic_letters(arabic_queue)
+                            combined_word.text = word
+                            ui.notify(f"Word: {word}")
+
+                        def clear_word():
+                            arabic_queue.clear()
+                            _update_queue_display()
+                            combined_word.text = ""
+                            ui.notify("Word cleared")
+
+                        with ui.row().classes("gap-2 flex-wrap"):
+                            ui.button("Add Letter to Word", on_click=add_letter_to_word).props(
+                                "color=secondary unelevated"
+                            )
+                            ui.button(
+                                "Combine Letters to Create Word", on_click=combine_letters
+                            ).props("color=positive unelevated")
+                            ui.button("Clear Word", on_click=clear_word).props(
+                                "color=negative outline"
+                            )
+
+                    arabic_section.set_visibility(False)
+
+                    def _on_language_change(e):
+                        arabic_section.set_visibility(e.value == "Arabic")
+
+                    language_toggle.on_value_change(_on_language_change)
 
         with ui.tab_panel(previous_tab):
             ui.label("Previous recordings")
