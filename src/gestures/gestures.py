@@ -21,6 +21,7 @@ class Gestures:
         self.detector = vision.HandLandmarker.create_from_options(options)
 
         self.prev_point = None
+        self.smoothed_point = None
         self.paths = []            # Stores ALL completed paths
         self.current_path = None   # The path currently being drawn
         self.drawing = False
@@ -28,6 +29,8 @@ class Gestures:
 
         self.STILL_THRESHOLD = 10        # pixels of movement
         self.STILL_TIME_REQUIRED = 0.75  # seconds
+        self.SMOOTHING_ALPHA = 0.25      # EMA blend factor (closer to 0 = smoother)
+        self.SMOOTHING_DEADZONE = 4      # px — ignore movements smaller than this
 
     def detect_index_fingertip(self, frame_bgr):
         """
@@ -47,6 +50,9 @@ class Gestures:
         result = self.detector.detect(mp_image)
 
         if not result.hand_landmarks:
+            self.prev_point = None
+            self.smoothed_point = None
+            self.still_start_time = None
             return frame_bgr, None
 
         hand_landmarks = result.hand_landmarks[0]
@@ -57,7 +63,25 @@ class Gestures:
         x_px = int(fingertip.x * width)
         y_px = int(fingertip.y * height)
 
-        point = (x_px, y_px)
+        raw_point = (x_px, y_px)
+
+        # --- EMA smoothing (mirrors template Gestures class) ---
+        if self.smoothed_point is None:
+            self.smoothed_point = raw_point
+        else:
+            ax, ay = self.smoothed_point
+            bx, by = raw_point
+            dx = bx - ax
+            dy = by - ay
+            dist = math.sqrt(dx * dx + dy * dy)
+
+            if dist >= self.SMOOTHING_DEADZONE:
+                alpha = self.SMOOTHING_ALPHA
+                sx = int(ax + alpha * dx)
+                sy = int(ay + alpha * dy)
+                self.smoothed_point = (sx, sy)
+
+        point = self.smoothed_point
 
         self.update_path(point)
 
@@ -70,11 +94,11 @@ class Gestures:
                          (0, 255, 255),
                          3)
 
-        # Draw fingertip dot
+        # Draw fingertip dot (on the smoothed position)
         color = (0, 0, 255) if self.drawing else (0, 255, 0)
-        cv2.circle(frame_bgr, (x_px, y_px), 6, color, -1)
+        cv2.circle(frame_bgr, point, 6, color, -1)
 
-        return frame_bgr, (x_px, y_px)
+        return frame_bgr, point
 
     def update_path(self, point):
         now = time.time()
@@ -110,10 +134,12 @@ class Gestures:
         self.prev_point = point
 
     def clear_path(self):
-        # print(self.paths[0])
-        save_data = np.array(self.paths[0])
-        
-        # np.savetxt('../samples/sample1.csv', save_data, delimiter=',')
+        if self.paths:
+            save_data = np.array(self.paths[0])
+            # np.savetxt('../samples/sample1.csv', save_data, delimiter=',')
+
         self.paths = []
         self.current_path = None
         self.drawing = False
+        self.prev_point = None
+        self.still_start_time = None
