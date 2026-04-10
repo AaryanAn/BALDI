@@ -26,10 +26,10 @@ class IRTracker:
     """
 
     # ------------------------------------------------------------------ #
-    # Camera settings                                                      #
+    # Camera settings  (Linux/V4L2 values — macOS handled in open_camera) #
     # ------------------------------------------------------------------ #
-    _AUTO_EXPOSURE = 1    # manual mode (disables auto-exposure)
-    _EXPOSURE      = -9   # ELP range: -1 (bright) → -13 (dark)
+    _AUTO_EXPOSURE = 1    # V4L2: 1 = manual  (macOS AVFoundation: 0 = manual)
+    _EXPOSURE      = -9   # V4L2: ELP range -1 (bright) → -13 (dark)
     _GAIN          = 100  # digital gain
 
     # ------------------------------------------------------------------ #
@@ -318,12 +318,60 @@ class IRTracker:
     @classmethod
     def open_camera(cls, camera_index: int = 1) -> cv2.VideoCapture:
         """Open and configure the ELP IR camera. Raises RuntimeError on failure."""
+        import platform
         cap = cv2.VideoCapture(camera_index)
         if not cap.isOpened():
             raise RuntimeError(
                 f"IRTracker: could not open camera at index {camera_index}."
             )
-        cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, cls._AUTO_EXPOSURE)
-        cap.set(cv2.CAP_PROP_EXPOSURE,      cls._EXPOSURE)
-        cap.set(cv2.CAP_PROP_GAIN,          cls._GAIN)
+
+        if platform.system() == "Darwin":
+            # cv2.cap.set() for exposure is silently ignored on macOS AVFoundation.
+            # Must call AVFoundation directly via PyObjC to lock exposure.
+            cls._lock_exposure_macos(camera_index)
+        else:
+            cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, cls._AUTO_EXPOSURE)
+            cap.set(cv2.CAP_PROP_EXPOSURE, cls._EXPOSURE)
+
+        cap.set(cv2.CAP_PROP_GAIN, cls._GAIN)
         return cap
+
+    @classmethod
+    def _lock_exposure_macos(cls, camera_index: int) -> None:
+        """
+        Lock camera exposure on macOS via AVFoundation (PyObjC).
+
+        USB cameras (AVCaptureDALDevice) don't support AVCaptureExposureModeCustom
+        (manual ISO + duration) — that mode is iOS/built-in only.  Instead we use
+        AVCaptureExposureModeLocked, which freezes exposure at whatever the camera
+        has currently settled on.
+
+        Requires: pip install pyobjc-framework-AVFoundation
+        """
+        try:
+            import AVFoundation as AVF
+        except ImportError:
+            print(
+                "IRTracker: pyobjc-framework-AVFoundation not installed — "
+                "run: pip install pyobjc-framework-AVFoundation"
+            )
+            return
+
+        devices = AVF.AVCaptureDevice.devicesWithMediaType_(AVF.AVMediaTypeVideo)
+        if not devices or camera_index >= len(devices):
+            print(f"IRTracker: no AVFoundation device at index {camera_index}")
+            return
+
+        device = devices[camera_index]
+
+        if not device.isExposureModeSupported_(AVF.AVCaptureExposureModeLocked):
+            print("IRTracker: AVCaptureExposureModeLocked not supported on this device")
+            return
+
+        success, _ = device.lockForConfiguration_(None)
+        if success:
+            device.setExposureMode_(AVF.AVCaptureExposureModeLocked)
+            device.unlockForConfiguration()
+            print("IRTracker: exposure locked via AVFoundation")
+        else:
+            print("IRTracker: lockForConfiguration_ failed")

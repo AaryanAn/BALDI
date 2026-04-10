@@ -17,12 +17,12 @@ srcDir = Path(__file__).resolve().parent.parent
 path = str(srcDir / "gestures/hand_landmarker.task")
 
 # ── Gesture tracker (integrated webcam, index 0) ──────────────────────────
-cap     = cv2.VideoCapture(0)
+cap     = cv2.VideoCapture(1)
 tracker = Gestures(path)
 
 # ── IR tracker (ELP IR camera, index 1) ──────────────────────────────────
-ir_tracker = IRTracker(camera_index=1)
-ir_cap     = IRTracker.open_camera(camera_index=1)
+ir_tracker = IRTracker(camera_index=0)
+ir_cap     = IRTracker.open_camera(camera_index=0)
 
 width  = 0
 height = 0
