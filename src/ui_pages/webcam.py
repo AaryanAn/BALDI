@@ -16,13 +16,28 @@ recordingsDir.mkdir(exist_ok=True)
 srcDir = Path(__file__).resolve().parent.parent
 path = str(srcDir / "gestures/hand_landmarker.task")
 
-# ── Gesture tracker (integrated webcam, index 0) ──────────────────────────
-cap     = cv2.VideoCapture(1)
+# ── Gesture tracker (MacBook built-in camera) ────────────────────────────
+# Index 0 when ELP is unplugged, 1 when it is plugged in.
+def _find_gesture_camera() -> cv2.VideoCapture:
+    for idx in range(4):
+        c = cv2.VideoCapture(idx)
+        if c.isOpened():
+            return c
+        c.release()
+    raise RuntimeError("No camera found for gesture tracking.")
+
+cap     = _find_gesture_camera()
 tracker = Gestures(path)
 
-# ── IR tracker (ELP IR camera, index 1) ──────────────────────────────────
+# ── IR tracker (ELP IR camera — optional) ────────────────────────────────
 ir_tracker = IRTracker(camera_index=0)
-ir_cap     = IRTracker.open_camera(camera_index=0)
+try:
+    ir_cap = IRTracker.open_camera(camera_index=0)
+    IR_AVAILABLE = True
+except RuntimeError:
+    ir_cap = None
+    IR_AVAILABLE = False
+    print("IRTracker: ELP camera not found — IR mode disabled.")
 
 width  = 0
 height = 0
@@ -63,6 +78,8 @@ def _gesture_capture_thread():
 def _ir_capture_thread():
     """Same as above but for the ELP IR camera."""
     global _ir_raw
+    if ir_cap is None:
+        return
     while True:
         ok, frame = ir_cap.read()
         if ok:
@@ -203,7 +220,8 @@ async def startup():
 @app.on_shutdown
 def shutdown():
     cap.release()
-    ir_cap.release()
+    if ir_cap is not None:
+        ir_cap.release()
 
 
 # ── UI ────────────────────────────────────────────────────────────────────
@@ -225,8 +243,11 @@ def main_page():
             with ui.row():
                 # ── Source selector ────────────────────────────────────────
                 with ui.card().classes("w-full justify-center items-center"):
+                    toggle_options = {"gesture": "Hand Gesture (RGB)"}
+                    if IR_AVAILABLE:
+                        toggle_options["ir"] = "IR Reflector"
                     source_toggle = ui.toggle(
-                        {"gesture": "Hand Gesture (RGB)", "ir": "IR Reflector"},
+                        toggle_options,
                         value="gesture",
                     ).classes("q-mb-md")
 
