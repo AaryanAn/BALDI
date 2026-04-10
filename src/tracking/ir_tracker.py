@@ -8,59 +8,76 @@ class IRTracker:
     """
     Tracks an IR reflector tip from an ELP infrared camera.
 
-    Pipeline per frame (optimised for throughput and robustness):
+    Pipeline per frame:
         1. Convert BGR → grayscale.
-        2. Adaptive-max threshold: threshold = max(gray) - THRESH_OFFSET.
-           The IR reflector is always the absolute brightest object,
-           so anchoring the threshold to the frame maximum works in any
-           lighting condition and avoids per-frame histogram computation.
-        3. One morphological opening pass (pre-built kernel) to remove
-           single-pixel salt noise.
-        4. Find external contours; pick the best blob using cv2.moments
-           (no per-pixel mask allocation).
-        5. EMA smooth the center; annotate; return.
+        2. Background subtraction — a slow EMA background model absorbs
+           static IR sources (room lights, reflections).  Only new / moving
+           bright spots survive in the difference image.
+        3. Fixed threshold on the difference image.
+        4. Morphological opening (pre-built kernel).
+        5. Contour selection with a proximity gate — candidates must be
+           within MAX_JUMP px of the last known position to prevent
+           noise blobs from hijacking the cursor.
+        6. EMA smooth the accepted center; annotate; return.
 
     Cursor color:
-        Green  — tracker active, idle (not writing)
-        Red    — writing mode engaged
+        Green — idle (not writing)
+        Red   — writing mode active
     """
 
     # ------------------------------------------------------------------ #
     # Camera settings                                                      #
     # ------------------------------------------------------------------ #
     _AUTO_EXPOSURE = 1    # manual mode (disables auto-exposure)
-    _EXPOSURE      = -8  # ELP range: -1 (bright) → -13 (dark)
-    _GAIN          = 100    # digital gain
+    _EXPOSURE      = -9   # ELP range: -1 (bright) → -13 (dark)
+    _GAIN          = 100  # digital gain
 
     # ------------------------------------------------------------------ #
-    # Detection hyper-parameters                                           #
+    # Background model                                                     #
     # ------------------------------------------------------------------ #
-    # Adaptive threshold: captures pixels within THRESH_OFFSET gray levels
-    # of the brightest pixel.  The IR reflector dot is always the max;
-    # THRESH_OFFSET=40 gives a comfortable margin while still rejecting
-    # everything else.  THRESH_FLOOR prevents false detections when the
-    # entire frame is dark (e.g., lens cap on).
-    THRESH_OFFSET  = 40   # gray levels below the frame maximum to include
-    THRESH_FLOOR   = 130  # absolute minimum threshold (no detection below)
+    # The background is a slow EMA of grayscale frames.
+    #   bg ← BG_ALPHA * bg + (1 - BG_ALPHA) * current
+    # At 0.97 the background absorbs ~63% of any static scene in ~1 second
+    # (at 30 fps).  Static IR light sources disappear; the moving reflector
+    # stands out in the difference image.
+    BG_ALPHA = 0.97
 
-    MIN_RADIUS     = 2    # px  — reject single-pixel noise
-    MAX_RADIUS     = 80   # px  — reject huge false positives
-    MIN_AREA       = 5    # px² — small reflector tip can be ~8px²
-    MIN_CIRCULARITY = 0.4  # 4π·area/perimeter² — pen tip ≈ 0.8+
+    # ------------------------------------------------------------------ #
+    # Detection hyper-parameters (applied to the diff image)              #
+    # ------------------------------------------------------------------ #
+    THRESH_OFFSET  = 25   # include pixels within this many levels of the diff max
+    THRESH_FLOOR   = 15   # minimum diff value to trigger any detection at all
+
+    MIN_RADIUS      = 2   # px  — reject single-pixel noise
+    MAX_RADIUS      = 80  # px  — reject huge false positives
+    MIN_AREA        = 5   # px² — small reflector tip can be ~8 px²
+    MIN_CIRCULARITY = 0.4 # 4π·area/perimeter²
+
+    # ------------------------------------------------------------------ #
+    # Proximity gate                                                       #
+    # ------------------------------------------------------------------ #
+    # Once tracking is established, only accept blobs within MAX_JUMP px
+    # of the last smoothed position.  Prevents noise blobs from hijacking
+    # the cursor.  When tracking is lost (smoothed_point is None) the gate
+    # opens fully to allow re-acquisition anywhere in the frame.
+    MAX_JUMP = 120  # px
 
     # ------------------------------------------------------------------ #
     # Path / drawing state                                                 #
     # ------------------------------------------------------------------ #
-    STILL_THRESHOLD    = 10   # px   — movement below this = "still"
-    STILL_TIME_REQUIRED = 1 # sec  — hold still to toggle drawing
-    SMOOTHING_ALPHA    = 0.3  # EMA blend (higher = more responsive)
-    SMOOTHING_DEADZONE = 3    # px   — sub-pixel jitter suppression
+    STILL_THRESHOLD     = 10  # px   — movement below this = "still"
+    STILL_TIME_REQUIRED = 1   # sec  — hold still to toggle drawing
+    SMOOTHING_ALPHA     = 0.3 # EMA blend (higher = more responsive)
+    SMOOTHING_DEADZONE  = 3   # px   — sub-pixel jitter suppression
 
     # Pre-built morphology kernel — avoids allocation every frame
     _MORPH_KERNEL = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
 
     def __init__(self, camera_index: int = 1):
         self.camera_index = camera_index
+
+        # Background model (float32, same size as camera frame, built lazily)
+        self._bg_model: np.ndarray | None = None
 
         # Path state — identical public API to Gestures
         self.paths:        list[list[tuple[int, int]]] = []
@@ -81,33 +98,50 @@ class IRTracker:
         Returns
         -------
         frame_bgr : np.ndarray
-            Input frame annotated in-place (no copy made).
+            Input frame annotated in-place.
         center : tuple[int, int] | None
             EMA-smoothed (x, y) tip coordinates, or None if not detected.
         """
         # ---- 1. Grayscale -----------------------------------------------
-        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        gray   = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        gray_f = gray.astype(np.float32)
 
-        # ---- 2. Adaptive-max threshold ----------------------------------
-        #  The reflector is always the brightest object.  Anchoring the
-        #  threshold to (max - THRESH_OFFSET) automatically works whether
-        #  the room is bright or dim, without any histogram computation.
-        max_val = int(gray.max())
-        thresh  = max(max_val - self.THRESH_OFFSET, self.THRESH_FLOOR)
-        _, binary = cv2.threshold(gray, thresh, 255, cv2.THRESH_BINARY)
+        # ---- 2. Background update & subtraction -------------------------
+        #  cv2.accumulateWeighted: bg ← (1-alpha)*bg + alpha*src
+        #  Using alpha = 1 - BG_ALPHA so the update weight is small.
+        if self._bg_model is None:
+            self._bg_model = gray_f.copy()
+        else:
+            cv2.accumulateWeighted(gray_f, self._bg_model, 1.0 - self.BG_ALPHA)
 
-        # ---- 3. Morphological opening — removes salt noise --------------
+        bg_u8 = np.clip(self._bg_model, 0, 255).astype(np.uint8)
+        diff  = cv2.subtract(gray, bg_u8)   # saturates at 0 — no negatives
+
+        # ---- 3. Threshold on the difference image -----------------------
+        #  THRESH_FLOOR guards against detecting when max_diff is just noise.
+        max_diff = int(diff.max())
+        if max_diff < self.THRESH_FLOOR:
+            # Scene has no bright anomaly — nothing to detect
+            self.smoothed_point = None
+            return frame_bgr, None
+
+        thresh = max_diff - self.THRESH_OFFSET
+        _, binary = cv2.threshold(diff, max(thresh, 1), 255, cv2.THRESH_BINARY)
+
+        # ---- 4. Morphological opening -----------------------------------
         binary = cv2.morphologyEx(
             binary, cv2.MORPH_OPEN, self._MORPH_KERNEL, iterations=1
         )
 
-        # ---- 4. Find contours and pick best blob ------------------------
+        # ---- 5. Contours + proximity-gated selection --------------------
         contours, _ = cv2.findContours(
             binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
-        raw_center, best_radius = self._best_contour(contours)
+        raw_center, best_radius = self._best_contour(
+            contours, last_pos=self.smoothed_point
+        )
 
-        # ---- 5. EMA smoothing -------------------------------------------
+        # ---- 6. EMA smoothing -------------------------------------------
         if raw_center is None:
             self.smoothed_point = None
             center = None
@@ -126,15 +160,19 @@ class IRTracker:
                     )
 
             center = self.smoothed_point
-            # Pass raw_center for still-detection (true physical movement)
-            # and the smoothed center for actual path recording.
+            # raw_center → still detection (true physical motion)
+            # center     → stored in path (EMA-smoothed stroke)
             self._update_path(raw_center, center)
 
-        # ---- 6. Annotate on the smoothed center -------------------------
+        # ---- 7. Annotate ------------------------------------------------
         if center is not None:
             self._draw_overlay(frame_bgr, center, best_radius)
 
         return frame_bgr, center
+
+    def reset_background(self):
+        """Force the background model to re-learn from scratch."""
+        self._bg_model = None
 
     def clear_path(self):
         """Reset all stored paths and drawing state."""
@@ -154,20 +192,34 @@ class IRTracker:
     # ------------------------------------------------------------------ #
 
     def _best_contour(
-        self, contours: list
+        self,
+        contours: list,
+        last_pos: tuple[int, int] | None = None,
     ) -> tuple[tuple[int, int] | None, int]:
         """
-        Pick the contour most likely to be the IR reflector tip.
+        Select the contour most likely to be the IR reflector tip.
 
-        Scoring uses circularity × radius (no per-pixel mask needed).
-        Returns (center, radius) or (None, 0).
+        Proximity gate
+        --------------
+        If ``last_pos`` is given (tracking is active), candidates farther
+        than ``MAX_JUMP`` pixels from that position are rejected outright.
+        This prevents noise blobs elsewhere in the frame from stealing the
+        cursor.  When ``last_pos`` is None (tracking just started / was
+        lost), any candidate is accepted so the pen can be re-acquired.
+
+        Scoring
+        -------
+        circularity × radius — prefers the roundest, largest passing blob.
+
+        Returns
+        -------
+        (center, radius)  or  (None, 0)
         """
-        best_center    = None
-        best_score     = -1.0
-        best_radius    = 0
+        best_center = None
+        best_score  = -1.0
+        best_radius = 0
 
         for cnt in contours:
-            # Fast area + centroid via moments
             M    = cv2.moments(cnt)
             area = M["m00"]
             if area < self.MIN_AREA:
@@ -176,12 +228,18 @@ class IRTracker:
             cx = M["m10"] / area
             cy = M["m01"] / area
 
-            # Radius gate (cheap)
+            # ── Proximity gate ──────────────────────────────────────────
+            if last_pos is not None:
+                dist_from_last = math.hypot(cx - last_pos[0], cy - last_pos[1])
+                if dist_from_last > self.MAX_JUMP:
+                    continue   # too far from known position — skip
+
+            # ── Radius gate ─────────────────────────────────────────────
             _, radius = cv2.minEnclosingCircle(cnt)
             if not (self.MIN_RADIUS <= radius <= self.MAX_RADIUS):
                 continue
 
-            # Circularity gate
+            # ── Circularity gate ────────────────────────────────────────
             perimeter = cv2.arcLength(cnt, True)
             if perimeter == 0:
                 continue
@@ -189,7 +247,7 @@ class IRTracker:
             if circularity < self.MIN_CIRCULARITY:
                 continue
 
-            # Score: prefer the roundest + largest blob
+            # ── Score ───────────────────────────────────────────────────
             score = circularity * radius
             if score > best_score:
                 best_score  = score
@@ -204,37 +262,27 @@ class IRTracker:
         center: tuple[int, int],
         radius: int,
     ) -> None:
-        """
-        Draw detection overlay in-place.
-
-        Green = idle  |  Red = writing mode active
-        """
+        """Green = idle  |  Red = writing mode active."""
         cx, cy = center
         color  = (0, 0, 255) if self.drawing else (0, 255, 0)
         ring_r = max(radius, 8)
 
-        cv2.circle(frame, center, ring_r, color, 2)          # outer ring
-        cv2.circle(frame, center, 5, color, -1)              # center dot
+        cv2.circle(frame, center, ring_r, color, 2)
+        cv2.circle(frame, center, 5, color, -1)
         arm = ring_r + 10
-        cv2.line(frame, (cx - arm, cy), (cx + arm, cy), color, 1)  # H arm
-        cv2.line(frame, (cx, cy - arm), (cx, cy + arm), color, 1)  # V arm
+        cv2.line(frame, (cx - arm, cy), (cx + arm, cy), color, 1)
+        cv2.line(frame, (cx, cy - arm), (cx, cy + arm), color, 1)
 
     def _update_path(
         self,
-        raw_point: tuple[int, int],
+        raw_point:     tuple[int, int],
         smoothed_point: tuple[int, int],
     ) -> None:
         """
-        Toggle drawing on/off and record path points.
+        Toggle drawing on/off (hold still) and record path points.
 
-        Parameters
-        ----------
-        raw_point : tuple
-            The raw detected blob center (NOT EMA-filtered).  Used for
-            still-vs-moving detection so EMA lag does not mask real motion.
-        smoothed_point : tuple
-            The EMA-filtered center.  Recorded into the path for smooth
-            strokes — only used for storage, not for motion decisions.
+        raw_point     — used for still-vs-moving detection (true motion).
+        smoothed_point — stored in the path (smooth strokes).
         """
         now = time.time()
 
@@ -242,9 +290,6 @@ class IRTracker:
             self.prev_point = raw_point
             return
 
-        # Use raw movement to judge whether the pen is physically still.
-        # EMA shrinks apparent movement, so comparing smoothed→smoothed
-        # would falsely trigger the "still" branch while the pen is moving.
         distance = math.hypot(
             raw_point[0] - self.prev_point[0],
             raw_point[1] - self.prev_point[1],
@@ -260,7 +305,6 @@ class IRTracker:
                     self.current_path = []
                     self.paths.append(self.current_path)
         else:
-            # Pen is moving — reset still timer and record smoothed position.
             self.still_start_time = None
             if self.drawing and self.current_path is not None:
                 self.current_path.append(smoothed_point)
@@ -273,11 +317,7 @@ class IRTracker:
 
     @classmethod
     def open_camera(cls, camera_index: int = 1) -> cv2.VideoCapture:
-        """
-        Open and configure the ELP IR camera.
-
-        Raises RuntimeError if the camera cannot be opened.
-        """
+        """Open and configure the ELP IR camera. Raises RuntimeError on failure."""
         cap = cv2.VideoCapture(camera_index)
         if not cap.isOpened():
             raise RuntimeError(
