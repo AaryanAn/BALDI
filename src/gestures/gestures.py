@@ -7,7 +7,6 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import time
 import math
-import threading
 
 
 class Gestures:
@@ -20,9 +19,6 @@ class Gestures:
         )
 
         self.detector = vision.HandLandmarker.create_from_options(options)
-
-        # process_frame() runs in a worker thread; UI handlers read paths on the main thread — serialize access.
-        self._lock = threading.Lock()
 
         self.prev_point = None
         self.smoothed_point = None
@@ -43,10 +39,6 @@ class Gestures:
             (x, y) pixel coords OR None
         """
 
-        with self._lock:
-            return self._detect_index_fingertip_locked(frame_bgr)
-
-    def _detect_index_fingertip_locked(self, frame_bgr):
         # Convert to RGB
         rgb_frame = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
@@ -143,15 +135,13 @@ class Gestures:
         self.prev_point = point
 
     def clear_path(self):
-        with self._lock:
-            self.paths = []
-            self.current_path = None
-            self.drawing = False
+        self.paths = []
+        self.current_path = None
+        self.drawing = False
 
     def snapshot_paths(self):
-        with self._lock:
-            out = []
-            for stroke in self.paths:
-                out.append(list(stroke))
-            return out
+        out = []
+        for stroke in self.paths:
+            out.append(list(stroke))
+        return out
 

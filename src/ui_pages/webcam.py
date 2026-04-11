@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 import cv2
-from nicegui import app, run, ui
+from nicegui import app, ui
 
 from evaluation.letters import LetterEvaluator
 from gestures.gestures import Gestures
@@ -16,8 +16,6 @@ srcDir = Path(__file__).resolve().parent.parent
 path = str(srcDir / "gestures/hand_landmarker.task")
 templates_dir = srcDir / "templates"
 templates_dir.mkdir(parents=True, exist_ok=True)
-team_templates_dir = srcDir / "team_templates"
-team_templates_dir.mkdir(parents=True, exist_ok=True)
 logs_dir = srcDir / "logs"
 logs_dir.mkdir(parents=True, exist_ok=True)
 log_file = logs_dir / "evaluations.jsonl"
@@ -32,7 +30,7 @@ if not list(templates_dir.glob("*/*.npy")):
 
 cap = cv2.VideoCapture(0)
 tracker = Gestures(path)
-evaluator = LetterEvaluator(templates_dir, extra_roots=[team_templates_dir])
+evaluator = LetterEvaluator(templates_dir)
 
 latest_frame = None
 SHOW_IMAGE_MODEL = os.getenv("BALDI_SHOW_IMAGE_MODEL", "").strip() in {"1", "true", "True", "yes", "YES"}
@@ -66,7 +64,7 @@ async def background_capture():
     global latest_frame
 
     while True:
-        frame = await run.io_bound(process_frame)
+        frame = process_frame()
         if frame:
             latest_frame = frame
 
@@ -122,65 +120,30 @@ def main_page():
                     if not SHOW_IMAGE_MODEL:
                         image_pred_label.set_visibility(False)
 
-                    async def save_template():
+                    def save_template():
                         label = label_input.value or ""
                         paths = tracker.snapshot_paths()
-
-                        def work():
-                            traj = evaluator.get_trajectory(paths)
-                            if traj.shape[0] == 0:
-                                return {"ok": False, "reason": "no_path"}
-                            saved = evaluator.save_template(label, traj)
-                            return {"ok": True, "saved": saved}
-
-                        data = await run.io_bound(work)
-                        if not data["ok"]:
-                            if data.get("reason") == "no_path":
-                                ui.notify("No path to save")
+                        traj = evaluator.get_trajectory(paths)
+                        if traj.shape[0] == 0:
+                            ui.notify("No path to save")
                             return
-                        saved = data["saved"]
+
+                        saved = evaluator.save_template(label, traj)
                         if saved is None:
                             ui.notify("Label is empty")
                             return
 
                         ui.notify(f"Saved template for '{label}'")
 
-                    async def run_evaluation():
+                    def run_evaluation():
                         label = label_input.value or ""
                         paths = tracker.snapshot_paths()
-
-                        def work():
-                            traj = evaluator.get_trajectory(paths)
-                            if traj.shape[0] == 0:
-                                return {"no_path": True}
-                            pred = evaluator.predict(traj, top_k=3)
-                            result = None
-                            if label.strip():
-                                result = evaluator.evaluate(label, traj)
-                            image_pred = None
-                            if SHOW_IMAGE_MODEL:
-                                try:
-                                    from evaluation.letters_image import predict_from_trajectory
-
-                                    image_pred = predict_from_trajectory(traj)
-                                except Exception:
-                                    image_pred = {"available": False}
-                            return {
-                                "no_path": False,
-                                "pred": pred,
-                                "result": result,
-                                "image_pred": image_pred,
-                            }
-
-                        data = await run.io_bound(work)
-                        if data.get("no_path"):
+                        traj = evaluator.get_trajectory(paths)
+                        if traj.shape[0] == 0:
                             ui.notify("No path to evaluate")
                             return
 
-                        pred = data["pred"]
-                        result = data["result"]
-                        image_pred = data["image_pred"]
-
+                        pred = evaluator.predict(traj, top_k=3)
                         if pred.get("predicted_label") is None:
                             conf = pred.get("confidence")
                             conf_txt = "" if conf is None else f" ({conf*100:.0f}%)"
@@ -203,11 +166,23 @@ def main_page():
                         except Exception:
                             topk_label.text = ""
 
+                        result = None
+                        if label.strip():
+                            result = evaluator.evaluate(label, traj)
+
+                        image_pred = None
                         if SHOW_IMAGE_MODEL:
-                            if image_pred and image_pred.get("available"):
-                                img_letter = image_pred["predicted_label"]
-                                img_conf = image_pred.get("confidence")
-                                image_pred_label.text = f"Image model: {img_letter} ({img_conf:.2f})"
+                            try:
+                                from evaluation.letters_image import predict_from_trajectory
+
+                                image_pred = predict_from_trajectory(traj)
+                            except Exception:
+                                image_pred = {"available": False}
+
+                            if image_pred.get("available"):
+                                pred = image_pred["predicted_label"]
+                                conf = image_pred.get("confidence")
+                                image_pred_label.text = f"Image model: {pred} ({conf:.2f})"
                             else:
                                 image_pred_label.text = "Image model: not loaded (train with .venv-train)"
 
