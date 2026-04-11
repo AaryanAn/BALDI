@@ -109,6 +109,10 @@ def main_page():
                     ui.label("Built-in templates for A–Z, a–z. You can save your own for better matching.").classes(
                         "text-sm text-grey-7"
                     )
+                    ui.label(
+                        "Drawing: pinch thumb and index finger together to record a stroke; release to finish. "
+                        "Dot is red while recording, green when idle."
+                    ).classes("text-sm text-grey-7")
 
                     ui.label("Please select your language:")
                     ui.toggle(["English", "Arabic"], value="English")

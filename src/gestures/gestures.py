@@ -1,11 +1,8 @@
 import cv2
 import mediapipe as mp
-import numpy as np
-import pandas as pd
 
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-import time
 import math
 import threading
 
@@ -29,10 +26,13 @@ class Gestures:
         self.paths = []            # Stores ALL completed paths
         self.current_path = None   # The path currently being drawn
         self.drawing = False
-        self.still_start_time = None
+        self._was_pinching = False
 
-        self.STILL_THRESHOLD = 10        # pixels of movement
-        self.STILL_TIME_REQUIRED = 0.75  # seconds
+        # Min distance between stroke samples (pixels) to reduce jitter
+        self.STROKE_SAMPLE_MIN_PX = 10
+        # Thumb tip (4) vs index tip (8); normalized by frame size for any resolution
+        self.PINCH_ENTER_NORM = 0.042
+        self.PINCH_EXIT_NORM = 0.062
         self.SMOOTHING_ALPHA = 0.25
         self.SMOOTHING_DEADZONE = 4
 
@@ -60,13 +60,28 @@ class Gestures:
         if not result.hand_landmarks:
             self.prev_point = None
             self.smoothed_point = None
-            self.still_start_time = None
+            if self._was_pinching:
+                self.drawing = False
+                self.current_path = None
+            self._was_pinching = False
             return frame_bgr, None
 
         hand_landmarks = result.hand_landmarks[0]
 
         height, width, _ = frame_bgr.shape
+        m = float(min(width, height))
+        thumb = hand_landmarks[4]
         fingertip = hand_landmarks[8]
+        tx, ty = thumb.x * width, thumb.y * height
+        ix, iy = fingertip.x * width, fingertip.y * height
+        pinch_dist = math.hypot(tx - ix, ty - iy) / m
+        pinch_active = self._was_pinching
+        if pinch_active:
+            if pinch_dist > self.PINCH_EXIT_NORM:
+                pinch_active = False
+        else:
+            if pinch_dist < self.PINCH_ENTER_NORM:
+                pinch_active = True
 
         x_px = int(fingertip.x * width)
         y_px = int(fingertip.y * height)
@@ -92,7 +107,7 @@ class Gestures:
 
         point = self.smoothed_point
 
-        self.update_path(point)
+        self.update_path(point, pinch_active)
 
         # Draw ALL stored paths
         for path in self.paths:
@@ -109,35 +124,29 @@ class Gestures:
 
         return frame_bgr, point
 
-    def update_path(self, point):
-        now = time.time()
+    def update_path(self, point, pinch_active):
+        """Pinch thumb + index to start a stroke; release to finish. Points recorded while pinched."""
+
+        if pinch_active and not self._was_pinching:
+            self.drawing = True
+            self.current_path = []
+            self.paths.append(self.current_path)
+            self.current_path.append(point)
+        elif not pinch_active and self._was_pinching:
+            self.drawing = False
+            self.current_path = None
+
+        self._was_pinching = pinch_active
 
         if self.prev_point is None:
             self.prev_point = point
             return
 
-        dx = point[0] - self.prev_point[0]
-        dy = point[1] - self.prev_point[1]
-        distance = math.sqrt(dx * dx + dy * dy)
-
-        # If finger is mostly still
-        if distance < self.STILL_THRESHOLD:
-            if self.still_start_time is None:
-                self.still_start_time = now
-            elif now - self.still_start_time > self.STILL_TIME_REQUIRED:
-                self.drawing = not self.drawing
-                self.still_start_time = None
-
-                # If drawing just turned ON → start new path
-                if self.drawing:
-                    self.current_path = []
-                    self.paths.append(self.current_path)
-
-        else:
-            # Reset still timer
-            self.still_start_time = None
-
-            if self.drawing and self.current_path is not None:
+        if self.drawing and self.current_path is not None and pinch_active:
+            dx = point[0] - self.prev_point[0]
+            dy = point[1] - self.prev_point[1]
+            distance = math.sqrt(dx * dx + dy * dy)
+            if distance >= self.STROKE_SAMPLE_MIN_PX:
                 self.current_path.append(point)
 
         self.prev_point = point
@@ -147,6 +156,7 @@ class Gestures:
             self.paths = []
             self.current_path = None
             self.drawing = False
+            self._was_pinching = False
 
     def snapshot_paths(self):
         with self._lock:
