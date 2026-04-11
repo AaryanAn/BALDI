@@ -16,6 +16,8 @@ srcDir = Path(__file__).resolve().parent.parent
 path = str(srcDir / "gestures/hand_landmarker.task")
 templates_dir = srcDir / "templates"
 templates_dir.mkdir(parents=True, exist_ok=True)
+team_templates_dir = srcDir / "team_templates"
+team_templates_dir.mkdir(parents=True, exist_ok=True)
 logs_dir = srcDir / "logs"
 logs_dir.mkdir(parents=True, exist_ok=True)
 log_file = logs_dir / "evaluations.jsonl"
@@ -30,7 +32,7 @@ if not list(templates_dir.glob("*/*.npy")):
 
 cap = cv2.VideoCapture(0)
 tracker = Gestures(path)
-evaluator = LetterEvaluator(templates_dir)
+evaluator = LetterEvaluator(templates_dir, extra_roots=[team_templates_dir])
 
 latest_frame = None
 SHOW_IMAGE_MODEL = os.getenv("BALDI_SHOW_IMAGE_MODEL", "").strip() in {"1", "true", "True", "yes", "YES"}
