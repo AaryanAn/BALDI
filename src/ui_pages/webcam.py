@@ -114,9 +114,13 @@ def main_page():
                     ui.toggle(["English", "Arabic"], value="English")
 
                     label_input = ui.input("Letter label (optional)").props("clearable")
-                    predicted_label = ui.label("")
-                    topk_label = ui.label("").classes("text-sm text-grey-7")
-                    score_label = ui.label("").classes("text-sm text-grey-7")
+                    ui.label(
+                        "Confidence = how sure the app is that one letter wins over the others. "
+                        "Template match = how similar your stroke is to saved examples of a letter."
+                    ).classes("text-caption text-grey-6")
+                    predicted_label = ui.label("").classes("text-body1 whitespace-pre-line")
+                    topk_label = ui.label("").classes("text-sm text-grey-7 whitespace-pre-line")
+                    score_label = ui.label("").classes("text-sm text-grey-7 whitespace-pre-line")
                     image_pred_label = ui.label("").classes("text-sm text-grey-7")
                     if not SHOW_IMAGE_MODEL:
                         image_pred_label.set_visibility(False)
@@ -190,23 +194,43 @@ def main_page():
                             result = data["result"]
                             image_pred = data["image_pred"]
 
+                            conf = pred.get("confidence")
+                            conf_pct = None if conf is None else f"{conf * 100:.0f}%"
+                            top = pred.get("top") or []
+                            best_guess = top[0]["label"] if top else None
+
                             if pred.get("predicted_label") is None:
-                                conf = pred.get("confidence")
-                                conf_txt = "" if conf is None else f" ({conf*100:.0f}%)"
-                                predicted_label.text = f"Predicted: Uncertain{conf_txt}"
+                                if best_guess is not None and conf_pct is not None:
+                                    predicted_label.text = (
+                                        f"Best match by shape: “{best_guess}” — not confident enough to lock in.\n"
+                                        f"Confidence in one clear winner (vs other letters): {conf_pct}. "
+                                        f"That usually means several letters fit your stroke almost as well."
+                                    )
+                                elif conf_pct is not None:
+                                    predicted_label.text = (
+                                        f"Could not pick a clear letter.\n"
+                                        f"Confidence in one winner: {conf_pct}."
+                                    )
+                                else:
+                                    predicted_label.text = "Could not compare to templates."
                             else:
-                                conf = pred.get("confidence") or 0.0
-                                predicted_label.text = f"Predicted: {pred['predicted_label']} ({conf*100:.0f}%)"
+                                letter = pred["predicted_label"]
+                                c = pred.get("confidence") or 0.0
+                                predicted_label.text = (
+                                    f"Best guess: “{letter}”\n"
+                                    f"Confidence it’s this letter (compared to all other letters): {c * 100:.0f}%"
+                                )
 
                             try:
-                                top = pred.get("top") or []
                                 if top:
-                                    items = [f"{t['label']} s={t['score']:.2f} d={t['distance']:.3f}" for t in top]
-                                    gap = None
-                                    if pred.get("best_distance") is not None and pred.get("second_distance") is not None:
-                                        gap = float(pred["second_distance"] - pred["best_distance"])
-                                    gap_txt = "" if gap is None else f"  gap={gap:.3f}"
-                                    topk_label.text = "Top: " + ", ".join(items) + gap_txt
+                                    lines = []
+                                    for i, t in enumerate(top[:3], start=1):
+                                        pct = float(t["score"]) * 100.0
+                                        lines.append(f"{i}. “{t['label']}”: {pct:.0f}% template match")
+                                    topk_label.text = (
+                                        "How well your stroke fits each letter’s saved examples:\n"
+                                        + "\n".join(lines)
+                                    )
                                 else:
                                     topk_label.text = ""
                             except Exception:
@@ -255,7 +279,11 @@ def main_page():
                             if result:
                                 score = result["score"]
                                 n = result["num_templates"]
-                                score_label.text = f"Similarity vs '{label}': {score:.2f}  ({n} template{'s' if n != 1 else ''})"
+                                score_label.text = (
+                                    f"Your label “{label}”: {score * 100:.0f}% template match "
+                                    f"({n} saved example{'s' if n != 1 else ''}).\n"
+                                    f"This only measures fit to “{label}” — not how sure the app is among all letters."
+                                )
                             ui.notify("Evaluation done")
                         finally:
                             eval_progress.set_visibility(False)
