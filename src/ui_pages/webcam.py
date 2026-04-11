@@ -110,8 +110,9 @@ def main_page():
                         "text-sm text-grey-7"
                     )
                     ui.label(
-                        "Drawing: pinch thumb and index finger together to record a stroke; release to finish. "
-                        "Dot is red while recording, green when idle."
+                        "Drawing: keep your other fingers in a loose fist—only your thumb and index finger move. "
+                        "Pinch those two fingertips together to start recording a stroke; open the pinch to finish. "
+                        "The dot is red while recording and green when idle."
                     ).classes("text-sm text-grey-7")
 
                     ui.label("Please select your language:")
