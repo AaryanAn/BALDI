@@ -115,8 +115,8 @@ def main_page():
 
                     label_input = ui.input("Letter label (optional)").props("clearable")
                     ui.label(
-                        "Confidence = how sure the app is that one letter wins over the others. "
-                        "Template match = how similar your stroke is to saved examples of a letter."
+                        "Main score = template match: how similar your stroke is to saved examples of a letter (0–100%). "
+                        "Technical confidence among letters is still saved in the evaluation log for debugging."
                     ).classes("text-caption text-grey-6")
                     predicted_label = ui.label("").classes("text-body1 whitespace-pre-line")
                     topk_label = ui.label("").classes("text-sm text-grey-7 whitespace-pre-line")
@@ -194,31 +194,33 @@ def main_page():
                             result = data["result"]
                             image_pred = data["image_pred"]
 
-                            conf = pred.get("confidence")
-                            conf_pct = None if conf is None else f"{conf * 100:.0f}%"
                             top = pred.get("top") or []
                             best_guess = top[0]["label"] if top else None
+                            best_tpl_pct = (
+                                int(round(float(top[0]["score"]) * 100.0)) if top else None
+                            )
 
                             if pred.get("predicted_label") is None:
-                                if best_guess is not None and conf_pct is not None:
+                                if best_guess is not None and best_tpl_pct is not None:
                                     predicted_label.text = (
-                                        f"Best match by shape: “{best_guess}” — not confident enough to lock in.\n"
-                                        f"Confidence in one clear winner (vs other letters): {conf_pct}. "
-                                        f"That usually means several letters fit your stroke almost as well."
-                                    )
-                                elif conf_pct is not None:
-                                    predicted_label.text = (
-                                        f"Could not pick a clear letter.\n"
-                                        f"Confidence in one winner: {conf_pct}."
+                                        f"Closest letter by templates: “{best_guess}” ({best_tpl_pct}% match).\n"
+                                        f"Not shown as a firm pick — other letters scored close too."
                                     )
                                 else:
                                     predicted_label.text = "Could not compare to templates."
                             else:
                                 letter = pred["predicted_label"]
-                                c = pred.get("confidence") or 0.0
+                                tpl_pct = None
+                                for t in top:
+                                    if t.get("label") == letter:
+                                        tpl_pct = int(round(float(t["score"]) * 100.0))
+                                        break
+                                if tpl_pct is None and top:
+                                    tpl_pct = int(round(float(top[0]["score"]) * 100.0))
+                                tpl_txt = f"{tpl_pct}%" if tpl_pct is not None else "—"
                                 predicted_label.text = (
-                                    f"Best guess: “{letter}”\n"
-                                    f"Confidence it’s this letter (compared to all other letters): {c * 100:.0f}%"
+                                    f"Best guess: “{letter}” ({tpl_txt} template match)\n"
+                                    f"How well your stroke fits this letter’s saved examples."
                                 )
 
                             try:
