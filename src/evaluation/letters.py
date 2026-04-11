@@ -8,9 +8,12 @@ from evaluation.dtw import dtw_distance
 
 
 class LetterEvaluator:
-    def __init__(self, root_dir: Path):
+    def __init__(self, root_dir: Path, extra_roots: list[Path] | None = None):
         self.root = Path(root_dir)
         self.root.mkdir(parents=True, exist_ok=True)
+        self.extra_roots = [Path(p) for p in (extra_roots or [])]
+        for x in self.extra_roots:
+            x.mkdir(parents=True, exist_ok=True)
         self._cache = {}
 
     def _label_dir(self, label: str) -> Path:
@@ -44,24 +47,27 @@ class LetterEvaluator:
     def load_templates(self, label: str):
         if label in self._cache:
             return self._cache[label]
-        d = self._label_dir(label)
-        if not d.exists():
-            return []
-
         out = []
-        for path in sorted(d.glob("*.npy")):
-            arr = np.load(path)
-            out.append(arr)
+        for base in [self.root] + self.extra_roots:
+            d = base / label
+            if not d.exists():
+                continue
+            for path in sorted(d.glob("*.npy")):
+                arr = np.load(path)
+                out.append(arr)
 
         self._cache[label] = out
         return out
 
     def list_labels(self):
-        labels = []
-        for p in sorted(self.root.iterdir()):
-            if p.is_dir() and not p.name.startswith("."):
-                labels.append(p.name)
-        return labels
+        labels = set()
+        for base in [self.root] + self.extra_roots:
+            if not base.exists():
+                continue
+            for p in base.iterdir():
+                if p.is_dir() and not p.name.startswith("."):
+                    labels.add(p.name)
+        return sorted(labels)
 
     def _score_from_dist(self, dist: float):
         # nonlinear mapping: tuned for air-writing trajectories
