@@ -144,116 +144,129 @@ def main_page():
 
                         ui.notify(f"Saved template for '{label}'")
 
+                    eval_progress = (
+                        ui.linear_progress(show_value=False, size="8px")
+                        .classes("w-full")
+                        .props("indeterminate color=primary")
+                    )
+                    eval_progress.set_visibility(False)
+
                     async def run_evaluation():
-                        label = label_input.value or ""
-                        paths = tracker.snapshot_paths()
-
-                        def work():
-                            traj = evaluator.get_trajectory(paths)
-                            if traj.shape[0] == 0:
-                                return {"no_path": True}
-                            pred = evaluator.predict(traj, top_k=3)
-                            result = None
-                            if label.strip():
-                                result = evaluator.evaluate(label, traj)
-                            image_pred = None
-                            if SHOW_IMAGE_MODEL:
-                                try:
-                                    from evaluation.letters_image import predict_from_trajectory
-
-                                    image_pred = predict_from_trajectory(traj)
-                                except Exception:
-                                    image_pred = {"available": False}
-                            return {
-                                "no_path": False,
-                                "pred": pred,
-                                "result": result,
-                                "image_pred": image_pred,
-                            }
-
-                        data = await run.io_bound(work)
-                        if data.get("no_path"):
-                            ui.notify("No path to evaluate")
-                            return
-
-                        pred = data["pred"]
-                        result = data["result"]
-                        image_pred = data["image_pred"]
-
-                        if pred.get("predicted_label") is None:
-                            conf = pred.get("confidence")
-                            conf_txt = "" if conf is None else f" ({conf*100:.0f}%)"
-                            predicted_label.text = f"Predicted: Uncertain{conf_txt}"
-                        else:
-                            conf = pred.get("confidence") or 0.0
-                            predicted_label.text = f"Predicted: {pred['predicted_label']} ({conf*100:.0f}%)"
-
+                        eval_btn.disable()
+                        eval_progress.set_visibility(True)
                         try:
-                            top = pred.get("top") or []
-                            if top:
-                                items = [f"{t['label']} s={t['score']:.2f} d={t['distance']:.3f}" for t in top]
-                                gap = None
-                                if pred.get("best_distance") is not None and pred.get("second_distance") is not None:
-                                    gap = float(pred["second_distance"] - pred["best_distance"])
-                                gap_txt = "" if gap is None else f"  gap={gap:.3f}"
-                                topk_label.text = "Top: " + ", ".join(items) + gap_txt
+                            label = label_input.value or ""
+                            paths = tracker.snapshot_paths()
+
+                            def work():
+                                traj = evaluator.get_trajectory(paths)
+                                if traj.shape[0] == 0:
+                                    return {"no_path": True}
+                                pred = evaluator.predict(traj, top_k=3)
+                                result = None
+                                if label.strip():
+                                    result = evaluator.evaluate(label, traj)
+                                image_pred = None
+                                if SHOW_IMAGE_MODEL:
+                                    try:
+                                        from evaluation.letters_image import predict_from_trajectory
+
+                                        image_pred = predict_from_trajectory(traj)
+                                    except Exception:
+                                        image_pred = {"available": False}
+                                return {
+                                    "no_path": False,
+                                    "pred": pred,
+                                    "result": result,
+                                    "image_pred": image_pred,
+                                }
+
+                            data = await run.io_bound(work)
+                            if data.get("no_path"):
+                                ui.notify("No path to evaluate")
+                                return
+
+                            pred = data["pred"]
+                            result = data["result"]
+                            image_pred = data["image_pred"]
+
+                            if pred.get("predicted_label") is None:
+                                conf = pred.get("confidence")
+                                conf_txt = "" if conf is None else f" ({conf*100:.0f}%)"
+                                predicted_label.text = f"Predicted: Uncertain{conf_txt}"
                             else:
+                                conf = pred.get("confidence") or 0.0
+                                predicted_label.text = f"Predicted: {pred['predicted_label']} ({conf*100:.0f}%)"
+
+                            try:
+                                top = pred.get("top") or []
+                                if top:
+                                    items = [f"{t['label']} s={t['score']:.2f} d={t['distance']:.3f}" for t in top]
+                                    gap = None
+                                    if pred.get("best_distance") is not None and pred.get("second_distance") is not None:
+                                        gap = float(pred["second_distance"] - pred["best_distance"])
+                                    gap_txt = "" if gap is None else f"  gap={gap:.3f}"
+                                    topk_label.text = "Top: " + ", ".join(items) + gap_txt
+                                else:
+                                    topk_label.text = ""
+                            except Exception:
                                 topk_label.text = ""
-                        except Exception:
-                            topk_label.text = ""
 
-                        if SHOW_IMAGE_MODEL:
-                            if image_pred and image_pred.get("available"):
-                                img_letter = image_pred["predicted_label"]
-                                img_conf = image_pred.get("confidence")
-                                image_pred_label.text = f"Image model: {img_letter} ({img_conf:.2f})"
-                            else:
-                                image_pred_label.text = "Image model: not loaded (train with .venv-train)"
+                            if SHOW_IMAGE_MODEL:
+                                if image_pred and image_pred.get("available"):
+                                    img_letter = image_pred["predicted_label"]
+                                    img_conf = image_pred.get("confidence")
+                                    image_pred_label.text = f"Image model: {img_letter} ({img_conf:.2f})"
+                                else:
+                                    image_pred_label.text = "Image model: not loaded (train with .venv-train)"
 
-                        try:
-                            record = {
-                                "ts": datetime.utcnow().isoformat(),
-                                "label": label,
-                                "score": result.get("score") if result else None,
-                                "distance": result.get("distance") if result else None,
-                                "has_templates": result.get("has_templates") if result else None,
-                                "num_templates": result.get("num_templates") if result else None,
-                                "predicted": pred.get("predicted_label"),
-                                "pred_conf": pred.get("confidence"),
-                                "pred_best_dist": pred.get("best_distance"),
-                                "pred_top": pred.get("top"),
-                                "image_pred": image_pred.get("predicted_label") if image_pred else None,
-                                "image_conf": image_pred.get("confidence") if image_pred else None,
-                            }
-                            with open(log_file, "a") as f:
-                                f.write(json.dumps(record) + "\n")
-                        except Exception:
-                            pass
+                            try:
+                                record = {
+                                    "ts": datetime.utcnow().isoformat(),
+                                    "label": label,
+                                    "score": result.get("score") if result else None,
+                                    "distance": result.get("distance") if result else None,
+                                    "has_templates": result.get("has_templates") if result else None,
+                                    "num_templates": result.get("num_templates") if result else None,
+                                    "predicted": pred.get("predicted_label"),
+                                    "pred_conf": pred.get("confidence"),
+                                    "pred_best_dist": pred.get("best_distance"),
+                                    "pred_top": pred.get("top"),
+                                    "image_pred": image_pred.get("predicted_label") if image_pred else None,
+                                    "image_conf": image_pred.get("confidence") if image_pred else None,
+                                }
+                                with open(log_file, "a") as f:
+                                    f.write(json.dumps(record) + "\n")
+                            except Exception:
+                                pass
 
-                        if not label.strip():
-                            score_label.text = ""
-                            ui.notify("Prediction done")
-                            return
+                            if not label.strip():
+                                score_label.text = ""
+                                ui.notify("Prediction done")
+                                return
 
-                        if result and not result["has_templates"]:
-                            score_label.text = (
-                                f"No template for '{label}'. Use a letter in A–Z / a–z, or save your drawing as a template."
-                            )
-                            ui.notify("No template for this letter")
-                            return
+                            if result and not result["has_templates"]:
+                                score_label.text = (
+                                    f"No template for '{label}'. Use a letter in A–Z / a–z, or save your drawing as a template."
+                                )
+                                ui.notify("No template for this letter")
+                                return
 
-                        if result:
-                            score = result["score"]
-                            n = result["num_templates"]
-                            score_label.text = f"Similarity vs '{label}': {score:.2f}  ({n} template{'s' if n != 1 else ''})"
-                        ui.notify("Evaluation done")
+                            if result:
+                                score = result["score"]
+                                n = result["num_templates"]
+                                score_label.text = f"Similarity vs '{label}': {score:.2f}  ({n} template{'s' if n != 1 else ''})"
+                            ui.notify("Evaluation done")
+                        finally:
+                            eval_progress.set_visibility(False)
+                            eval_btn.enable()
 
                     def clear_drawing():
                         tracker.clear_path()
                         ui.notify("Path cleared")
 
                     ui.button("Save as template", on_click=save_template)
-                    ui.button("Evaluate", on_click=run_evaluation)
+                    eval_btn = ui.button("Evaluate", on_click=run_evaluation)
                     ui.button("Clear Drawing", on_click=clear_drawing)
 
         with ui.tab_panel(previous_tab):
