@@ -58,11 +58,7 @@ frame_width = 0
 frame_height = 0
 SHOW_IMAGE_MODEL = os.getenv("BALDI_SHOW_IMAGE_MODEL", "").strip() in {"1", "true", "True", "yes", "YES"}
 
-# Latest raw frame from the gesture camera (written by a daemon thread so cap.read()
-# never blocks the NiceGUI asyncio loop).
-_gesture_raw = None
-_gesture_lock = threading.Lock()
-
+# IR camera only: separate thread so cap.read() on device 1 never blocks the loop.
 _ir_raw = None
 _ir_lock = threading.Lock()
 
@@ -78,16 +74,6 @@ def clear_active_paths():
     _clear_active_paths(active_source, tracker, ir_tracker)
 
 
-def _gesture_capture_thread():
-    global _gesture_raw
-    while True:
-        ok, frame = cap.read()
-        if ok:
-            frame = cv2.flip(frame, 1)
-            with _gesture_lock:
-                _gesture_raw = frame
-
-
 def _ir_capture_thread():
     global _ir_raw
     while True:
@@ -99,13 +85,14 @@ def _ir_capture_thread():
 
 
 def process_frame():
+    """Same pipeline as ML_testing: read + flip + MediaPipe inside io_bound (full pinch rate)."""
     global raw_frame
-    with _gesture_lock:
-        frame = _gesture_raw
-    if frame is None:
+    success, frame = cap.read()
+    if not success:
         return None
 
-    frame = frame.copy()
+    frame = cv2.flip(frame, 1)
+
     annotated_frame, fingertip = tracker.detect_index_fingertip(frame)
 
     # Draw path
@@ -156,24 +143,16 @@ def process_ir_frame():
 async def background_capture():
     global latest_frame, latest_ir_frame, video_writer, is_recording
 
-    # When both cameras exist, do not run IR detection every single tick — it halves how
-    # often the hand (pinch) path runs and makes pinch edges easy to miss.
-    ir_tick = 0
-
     while True:
-        # MediaPipe/OpenCV off the asyncio loop so WebSocket heartbeats are not starved.
+        # Hand camera: single io_bound like ML_testing (pinch + tracking stay in sync with frames).
         frame = await run.io_bound(process_frame)
         if frame:
             latest_frame = frame
 
         if ir_tracker is not None:
-            ir_tick += 1
-            # Full rate for IR when user is on IR; otherwise update IR preview every 2nd tick
-            # so gesture / pinch keeps ~2x the processing budget.
-            if active_source == "ir" or ir_tick % 2 == 0:
-                ir_frame = await run.io_bound(process_ir_frame)
-                if ir_frame:
-                    latest_ir_frame = ir_frame
+            ir_frame = await run.io_bound(process_ir_frame)
+            if ir_frame:
+                latest_ir_frame = ir_frame
 
         if is_recording and video_writer is not None and raw_frame is not None:
             video_writer.write(raw_frame)
@@ -203,7 +182,6 @@ async def startup():
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    threading.Thread(target=_gesture_capture_thread, daemon=True).start()
     if ir_cap is not None:
         threading.Thread(target=_ir_capture_thread, daemon=True).start()
     asyncio.create_task(background_capture())
@@ -223,40 +201,70 @@ def shutdown():
 
 @ui.page("/")
 def main_page():
+    try:
+        ui.colors(primary="#1a365d", secondary="#455a64")
+    except Exception:
+        pass
+
     ui.add_head_html(
-        "<style>body { background-color: #eceff1 !important; }</style>",
+        """
+        <style>
+          body { background: #e4e9ef !important; }
+          .baldi-app-card {
+            border-radius: 10px;
+            border: 1px solid #c5d0dc;
+            box-shadow: 0 2px 8px rgba(26, 54, 93, 0.06);
+            background: #fafcfd;
+          }
+          .baldi-app-card--accent {
+            border-left: 4px solid #1a365d;
+          }
+          .baldi-video-wrap {
+            border-radius: 10px;
+            overflow: hidden;
+            background: #0f1419;
+            border: 1px solid #2c3e50;
+          }
+          .baldi-pill {
+            letter-spacing: 0.06em;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            color: #546e7a;
+            font-weight: 600;
+          }
+        </style>
+        """,
         shared=True,
     )
 
-    with ui.header().classes("bg-primary text-white shadow-2"):
-        with ui.row().classes("w-full items-center justify-between q-px-lg q-py-sm no-wrap"):
+    with ui.header().classes("bg-primary text-white shadow-1"):
+        with ui.row().classes("w-full items-center justify-between q-px-xl q-py-md no-wrap"):
             with ui.column().classes("gap-none"):
-                ui.label("BALDI").classes("text-h6 text-weight-bold")
+                ui.label("BALDI").classes("text-h5 text-weight-bold")
                 ui.label("Handwriting recognition").classes("text-caption").style(
-                    "opacity: 0.88; color: white;"
+                    "opacity: 0.9; color: #e8eef4;"
                 )
             with ui.tabs().classes("text-white bg-primary") as tabs:
                 record_tab = ui.tab("New recording")
                 previous_tab = ui.tab("History")
 
-    with ui.tab_panels(tabs, value=record_tab).classes("w-full bg-transparent q-pa-md"):
+    with ui.tab_panels(tabs, value=record_tab).classes("w-full bg-transparent q-pa-lg"):
         with ui.tab_panel(record_tab):
             with ui.row().classes(
-                "items-start justify-center w-full q-col-gutter-lg flex-wrap"
-            ).style("max-width: 1180px; margin: 0 auto;"):
+                "items-start justify-center w-full q-col-gutter-xl flex-wrap"
+            ).style("max-width: 1200px; margin: 0 auto;"):
                 with ui.column().classes("col").style("flex: 1 1 320px; max-width: 920px; min-width: 280px;"):
-                    with ui.card().classes("rounded-borders shadow-2 bg-white overflow-hidden q-pa-md"):
-                        ui.label("Camera").classes("text-subtitle1 text-weight-medium text-grey-9 q-mb-sm")
+                    with ui.card().classes("baldi-app-card q-pa-lg w-full"):
+                        ui.label("Live camera").classes("baldi-pill q-mb-xs")
+                        ui.label("Preview").classes("text-h6 text-weight-medium text-grey-9 q-mb-md")
                         source_toggle = None
                         if ir_tracker is not None:
                             source_toggle = ui.toggle(
-                                {"gesture": "Hand camera (RGB)", "ir": "IR reflector"},
+                                {"gesture": "Hand (RGB)", "ir": "IR reflector"},
                                 value="gesture",
                             ).classes("q-mb-md w-full justify-center")
 
-                        with ui.element("div").classes(
-                            "rounded-borders overflow-hidden bg-grey-10"
-                        ).style("border: 1px solid #cfd8dc;"):
+                        with ui.element("div").classes("baldi-video-wrap"):
                             gesture_display = ui.interactive_image().style(
                                 "width:100%; height:auto; max-height:72vh; object-fit:contain; display:block;"
                             )
@@ -292,25 +300,26 @@ def main_page():
                         ui.timer(0.03, update_video)
 
                         ui.label(
-                            "Record saves the current view (hand or IR) to an MP4 in the project recordings folder."
-                        ).classes("text-caption text-grey-7 q-mt-sm")
+                            "Record writes the active view to an MP4 under src/recordings/."
+                        ).classes("text-caption text-grey-7 q-mt-md")
 
-                        with ui.row().classes("w-full justify-end q-mt-md"):
+                        with ui.row().classes("w-full justify-end q-mt-sm"):
                             record_button = ui.button("Record").props(
                                 "unelevated no-caps rounded"
                             ).classes("text-weight-medium")
                             record_button.on_click(lambda: toggle_record(record_button))
 
                 with ui.column().classes("col").style("flex: 0 1 400px; min-width: 260px;"):
-                    with ui.card().classes("rounded-borders shadow-2 bg-white q-pa-lg"):
-                        ui.label("Recognition").classes(
-                            "text-subtitle1 text-weight-medium text-grey-9 q-mb-md"
+                    with ui.card().classes("baldi-app-card baldi-app-card--accent q-pa-lg w-full"):
+                        ui.label("Recognition").classes("baldi-pill q-mb-xs")
+                        ui.label("Letter matching").classes(
+                            "text-h6 text-weight-medium text-grey-9 q-mb-sm"
                         )
                         ui.label(
-                            "Templates cover A–Z and a–z. Add your own for better matching."
-                        ).classes("text-body2 text-grey-8 q-mb-md")
+                            "Templates cover A–Z and a–z. Save your own strokes to improve matches."
+                        ).classes("text-body2 text-grey-8 q-mb-lg")
 
-                        ui.separator().classes("q-mb-md")
+                        ui.separator().classes("q-mb-md bg-grey-4")
 
                         ui.label("How to draw").classes(
                             "text-caption text-weight-bold text-grey-7 text-uppercase q-mb-xs"
@@ -537,9 +546,10 @@ def main_page():
 
         with ui.tab_panel(previous_tab):
             with ui.column().classes("w-full").style("max-width: 900px; margin: 0 auto;"):
-                with ui.card().classes("rounded-borders shadow-2 bg-white q-pa-lg w-full"):
+                with ui.card().classes("baldi-app-card q-pa-lg w-full"):
+                    ui.label("History").classes("baldi-pill q-mb-xs")
                     ui.label("Evaluation log").classes(
-                        "text-subtitle1 text-weight-medium text-grey-9 q-mb-md"
+                        "text-h6 text-weight-medium text-grey-9 q-mb-md"
                     )
 
                     @ui.refreshable
@@ -602,10 +612,11 @@ def main_page():
                     ).classes("q-mb-lg")
                     records_view()
 
-                    ui.separator().classes("q-mb-md")
+                    ui.separator().classes("q-mb-md bg-grey-4")
 
-                    ui.label("Camera recordings").classes(
-                        "text-subtitle1 text-weight-medium text-grey-9 q-mb-md"
+                    ui.label("Recordings").classes("baldi-pill q-mb-xs")
+                    ui.label("Camera video files").classes(
+                        "text-subtitle2 text-weight-medium text-grey-9 q-mb-md"
                     )
 
                     @ui.refreshable
