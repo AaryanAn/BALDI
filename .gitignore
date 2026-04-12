@@ -11,6 +11,7 @@ TEMPLATE_COLLECTOR_TEAM.md
 # runtime logs and local data (not required in git)
 logs/
 src/logs/*.jsonl
+recordings/
 
 # downloaded / generated datasets and large artifacts
 data/

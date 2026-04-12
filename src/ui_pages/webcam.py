@@ -15,6 +15,8 @@ from tracking.ir_tracker import IRTracker
 
 
 srcDir = Path(__file__).resolve().parent.parent
+recordingsDir = srcDir / "recordings"
+recordingsDir.mkdir(exist_ok=True)
 path = str(srcDir / "gestures/hand_landmarker.task")
 templates_dir = srcDir / "templates"
 templates_dir.mkdir(parents=True, exist_ok=True)
@@ -46,6 +48,11 @@ except RuntimeError:
 
 latest_frame = None
 latest_ir_frame = None
+raw_frame = None
+is_recording = False
+video_writer = None
+frame_width = 0
+frame_height = 0
 SHOW_IMAGE_MODEL = os.getenv("BALDI_SHOW_IMAGE_MODEL", "").strip() in {"1", "true", "True", "yes", "YES"}
 
 # Latest raw frame from the gesture camera (written by a daemon thread so cap.read()
@@ -94,6 +101,7 @@ def _ir_capture_thread():
 
 
 def process_frame():
+    global raw_frame
     with _gesture_lock:
         frame = _gesture_raw
     if frame is None:
@@ -111,7 +119,9 @@ def process_frame():
                     (0, 255, 255),
                     3)
 
-    
+    if active_source == "gesture":
+        raw_frame = annotated_frame
+
     _, buffer = cv2.imencode(".jpg", annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
 
     return base64.b64encode(buffer).decode("utf-8")
@@ -119,6 +129,7 @@ def process_frame():
 
 def process_ir_frame():
     """IR camera: blob-tracked reflector tip and stroke paths (non-blocking read via thread)."""
+    global raw_frame
     if ir_tracker is None or ir_cap is None:
         return None
     with _ir_lock:
@@ -136,12 +147,16 @@ def process_ir_frame():
                 (0, 255, 255),
                 3,
             )
+
+    if active_source == "ir":
+        raw_frame = annotated_frame
+
     _, buffer = cv2.imencode(".jpg", annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
     return base64.b64encode(buffer).decode("utf-8")
 
 
 async def background_capture():
-    global latest_frame, latest_ir_frame
+    global latest_frame, latest_ir_frame, video_writer, is_recording
 
     while True:
         # MediaPipe/OpenCV off the asyncio loop so WebSocket heartbeats are not starved.
@@ -154,11 +169,34 @@ async def background_capture():
             if ir_frame:
                 latest_ir_frame = ir_frame
 
+        if is_recording and video_writer is not None and raw_frame is not None:
+            video_writer.write(raw_frame)
+
         await asyncio.sleep(0.02)
+
+
+def toggle_record(record_button):
+    global is_recording, video_writer, frame_width, frame_height
+    if is_recording:
+        is_recording = False
+        if video_writer is not None:
+            video_writer.release()
+        video_writer = None
+        record_button.props("color=primary")
+    else:
+        recording_file = str(recordingsDir / f"recording_{len(list(recordingsDir.glob('*.mp4')))}.mp4")
+        fourcc = cv2.VideoWriter_fourcc(*"avc1")
+        video_writer = cv2.VideoWriter(recording_file, fourcc, 20.0, (frame_width, frame_height))
+        is_recording = True
+        record_button.props("color=negative")
 
 
 @app.on_startup
 async def startup():
+    global frame_width, frame_height
+    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
     threading.Thread(target=_gesture_capture_thread, daemon=True).start()
     if ir_cap is not None:
         threading.Thread(target=_ir_capture_thread, daemon=True).start()
@@ -167,6 +205,11 @@ async def startup():
 
 @app.on_shutdown
 def shutdown():
+    global video_writer, is_recording
+    if video_writer is not None:
+        video_writer.release()
+        video_writer = None
+    is_recording = False
     cap.release()
     if ir_cap is not None:
         ir_cap.release()
@@ -225,6 +268,10 @@ def main_page():
                             )
 
                     ui.timer(0.03, update_video)
+
+                    with ui.row().classes("w-full justify-center q-mt-sm"):
+                        record_button = ui.button("Record")
+                        record_button.on_click(lambda: toggle_record(record_button))
 
                 with ui.card().style("min-width: 260px; max-width: 420px; width: 100%;"):
                     ui.label("Built-in templates for A–Z, a–z. You can save your own for better matching.").classes(
@@ -431,7 +478,7 @@ def main_page():
                     ui.button("Clear Drawing", on_click=clear_drawing)
 
         with ui.tab_panel(previous_tab):
-            ui.label("Previous recordings")
+            ui.label("Evaluation log").classes("text-h6")
 
             @ui.refreshable
             def records_view():
@@ -478,5 +525,25 @@ def main_page():
                     except Exception:
                         continue
 
-            ui.button("Refresh", on_click=records_view.refresh)
+            ui.button("Refresh log", on_click=records_view.refresh)
             records_view()
+
+            ui.separator().classes("q-my-md")
+            ui.label("Camera recordings (.mp4)").classes("text-h6")
+
+            @ui.refreshable
+            def camera_recordings_view():
+                if not recordingsDir.exists():
+                    ui.label("No recordings folder.")
+                    return
+                files = sorted(recordingsDir.glob("*.mp4"), key=lambda p: p.name)
+                if not files:
+                    ui.label("No .mp4 files yet. Use Record on the New Recording tab.")
+                    return
+                for f in files:
+                    with ui.row().classes("items-center gap-2"):
+                        ui.label(f.name).classes("text-sm")
+                        ui.button(icon="download", on_click=lambda ff=f: ui.download(ff))
+
+            ui.button("Refresh list", on_click=camera_recordings_view.refresh)
+            camera_recordings_view()
