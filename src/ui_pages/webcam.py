@@ -156,6 +156,10 @@ def process_ir_frame():
 async def background_capture():
     global latest_frame, latest_ir_frame, video_writer, is_recording
 
+    # When both cameras exist, do not run IR detection every single tick — it halves how
+    # often the hand (pinch) path runs and makes pinch edges easy to miss.
+    ir_tick = 0
+
     while True:
         # MediaPipe/OpenCV off the asyncio loop so WebSocket heartbeats are not starved.
         frame = await run.io_bound(process_frame)
@@ -163,9 +167,13 @@ async def background_capture():
             latest_frame = frame
 
         if ir_tracker is not None:
-            ir_frame = await run.io_bound(process_ir_frame)
-            if ir_frame:
-                latest_ir_frame = ir_frame
+            ir_tick += 1
+            # Full rate for IR when user is on IR; otherwise update IR preview every 2nd tick
+            # so gesture / pinch keeps ~2x the processing budget.
+            if active_source == "ir" or ir_tick % 2 == 0:
+                ir_frame = await run.io_bound(process_ir_frame)
+                if ir_frame:
+                    latest_ir_frame = ir_frame
 
         if is_recording and video_writer is not None and raw_frame is not None:
             video_writer.write(raw_frame)

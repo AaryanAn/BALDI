@@ -30,10 +30,11 @@ class Gestures:
         self._was_pinching = False
 
         # Min distance between stroke samples (pixels) to reduce jitter
-        self.STROKE_SAMPLE_MIN_PX = 10
-        # Thumb tip (4) vs index tip (8); normalized by frame size for any resolution
-        self.PINCH_ENTER_NORM = 0.042
-        self.PINCH_EXIT_NORM = 0.062
+        self.STROKE_SAMPLE_MIN_PX = 8
+        # Thumb tip (4) vs index tip (8); normalized by min(w,h). Slightly loose so
+        # pinch registers reliably on webcam; hysteresis prevents chatter.
+        self.PINCH_ENTER_NORM = 0.058
+        self.PINCH_EXIT_NORM = 0.088
         self.SMOOTHING_ALPHA = 0.25
         self.SMOOTHING_DEADZONE = 4
 
