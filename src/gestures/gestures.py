@@ -1,6 +1,7 @@
 import cv2
 import mediapipe as mp
 
+from gestures.pinch_hysteresis import next_pinch_state
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import math
@@ -75,13 +76,12 @@ class Gestures:
         tx, ty = thumb.x * width, thumb.y * height
         ix, iy = fingertip.x * width, fingertip.y * height
         pinch_dist = math.hypot(tx - ix, ty - iy) / m
-        pinch_active = self._was_pinching
-        if pinch_active:
-            if pinch_dist > self.PINCH_EXIT_NORM:
-                pinch_active = False
-        else:
-            if pinch_dist < self.PINCH_ENTER_NORM:
-                pinch_active = True
+        pinch_active = next_pinch_state(
+            self._was_pinching,
+            pinch_dist,
+            self.PINCH_ENTER_NORM,
+            self.PINCH_EXIT_NORM,
+        )
 
         x_px = int(fingertip.x * width)
         y_px = int(fingertip.y * height)

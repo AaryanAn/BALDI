@@ -12,6 +12,9 @@ from nicegui import app, run, ui
 from evaluation.letters import LetterEvaluator
 from gestures.gestures import Gestures
 from tracking.ir_tracker import IRTracker
+from ui_pages.recording_paths import next_recording_path
+from ui_pages.stroke_source import clear_active_paths as _clear_active_paths
+from ui_pages.stroke_source import snapshot_active_paths as _snapshot_active_paths
 
 
 srcDir = Path(__file__).resolve().parent.parent
@@ -68,16 +71,11 @@ active_source = "gesture"
 
 
 def snapshot_active_paths():
-    if ir_tracker is not None and active_source == "ir":
-        return ir_tracker.snapshot_paths()
-    return tracker.snapshot_paths()
+    return _snapshot_active_paths(active_source, tracker, ir_tracker)
 
 
 def clear_active_paths():
-    if ir_tracker is not None and active_source == "ir":
-        ir_tracker.clear_path()
-    else:
-        tracker.clear_path()
+    _clear_active_paths(active_source, tracker, ir_tracker)
 
 
 def _gesture_capture_thread():
@@ -184,7 +182,7 @@ def toggle_record(record_button):
         video_writer = None
         record_button.props("color=primary")
     else:
-        recording_file = str(recordingsDir / f"recording_{len(list(recordingsDir.glob('*.mp4')))}.mp4")
+        recording_file = str(next_recording_path(recordingsDir))
         fourcc = cv2.VideoWriter_fourcc(*"avc1")
         video_writer = cv2.VideoWriter(recording_file, fourcc, 20.0, (frame_width, frame_height))
         is_recording = True
