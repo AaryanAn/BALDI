@@ -209,12 +209,13 @@ def main_page():
     ui.add_head_html(
         """
         <style>
-          body { background: #e4e9ef !important; }
+          body { background: #dfe6ee !important; }
+          .q-tab-panels { padding: 8px 12px 16px !important; }
           .baldi-app-card {
-            border-radius: 10px;
-            border: 1px solid #c5d0dc;
-            box-shadow: 0 2px 8px rgba(26, 54, 93, 0.06);
-            background: #fafcfd;
+            border-radius: 8px;
+            border: 1px solid #b8c5d0;
+            box-shadow: 0 1px 4px rgba(26, 54, 93, 0.05);
+            background: #f7f9fb;
           }
           .baldi-app-card--accent {
             border-left: 4px solid #1a365d;
@@ -238,40 +239,43 @@ def main_page():
     )
 
     with ui.header().classes("bg-primary text-white shadow-1"):
-        with ui.row().classes("w-full items-center justify-between q-px-xl q-py-md no-wrap"):
+        with ui.row().classes("w-full items-center justify-between q-px-md q-py-sm no-wrap"):
             with ui.column().classes("gap-none"):
-                ui.label("BALDI").classes("text-h5 text-weight-bold")
+                ui.label("BALDI").classes("text-subtitle1 text-weight-bold")
                 ui.label("Handwriting recognition").classes("text-caption").style(
-                    "opacity: 0.9; color: #e8eef4;"
+                    "opacity: 0.9; color: #e8eef4; line-height: 1.2;"
                 )
-            with ui.tabs().classes("text-white bg-primary") as tabs:
+            with ui.tabs().classes("text-white bg-primary").props("dense") as tabs:
                 record_tab = ui.tab("New recording")
                 previous_tab = ui.tab("History")
 
-    with ui.tab_panels(tabs, value=record_tab).classes("w-full bg-transparent q-pa-lg"):
+    with ui.tab_panels(tabs, value=record_tab).classes("w-full bg-transparent"):
         with ui.tab_panel(record_tab):
             with ui.row().classes(
-                "items-start justify-center w-full q-col-gutter-xl flex-wrap"
-            ).style("max-width: 1200px; margin: 0 auto;"):
-                with ui.column().classes("col").style("flex: 1 1 320px; max-width: 920px; min-width: 280px;"):
-                    with ui.card().classes("baldi-app-card q-pa-lg w-full"):
-                        ui.label("Live camera").classes("baldi-pill q-mb-xs")
-                        ui.label("Preview").classes("text-h6 text-weight-medium text-grey-9 q-mb-md")
+                "items-start justify-center w-full q-col-gutter-md flex-wrap"
+            ).style("max-width: 100%; margin: 0;"):
+                with ui.column().classes("col").style("flex: 1 1 280px; max-width: min(92vw, 960px); min-width: 240px;"):
+                    with ui.card().classes("baldi-app-card q-pa-md w-full"):
+                        with ui.row().classes("items-baseline justify-between q-mb-sm no-wrap"):
+                            ui.label("Camera preview").classes(
+                                "text-subtitle2 text-weight-medium text-grey-9"
+                            )
+                            ui.label("RGB").classes("baldi-pill")
                         source_toggle = None
                         if ir_tracker is not None:
                             source_toggle = ui.toggle(
                                 {"gesture": "Hand (RGB)", "ir": "IR reflector"},
                                 value="gesture",
-                            ).classes("q-mb-md w-full justify-center")
+                            ).classes("q-mb-sm w-full justify-center")
 
                         with ui.element("div").classes("baldi-video-wrap"):
                             gesture_display = ui.interactive_image().style(
-                                "width:100%; height:auto; max-height:72vh; object-fit:contain; display:block;"
+                                "width:100%; height:auto; max-height:min(68vh, 720px); object-fit:contain; display:block; vertical-align:top;"
                             )
                             ir_display = None
                             if ir_tracker is not None:
                                 ir_display = ui.interactive_image().style(
-                                    "width:100%; height:auto; max-height:72vh; object-fit:contain; display:block;"
+                                    "width:100%; height:auto; max-height:min(68vh, 720px); object-fit:contain; display:block; vertical-align:top;"
                                 )
 
                         def sync_source_visibility():
@@ -300,26 +304,27 @@ def main_page():
                         ui.timer(0.03, update_video)
 
                         ui.label(
-                            "Record writes the active view to an MP4 under src/recordings/."
-                        ).classes("text-caption text-grey-7 q-mt-md")
+                            "Record saves MP4 to src/recordings/."
+                        ).classes("text-caption text-grey-7 q-mt-xs")
 
-                        with ui.row().classes("w-full justify-end q-mt-sm"):
+                        with ui.row().classes("w-full justify-end q-mt-xs"):
                             record_button = ui.button("Record").props(
                                 "unelevated no-caps rounded"
                             ).classes("text-weight-medium")
                             record_button.on_click(lambda: toggle_record(record_button))
 
-                with ui.column().classes("col").style("flex: 0 1 400px; min-width: 260px;"):
-                    with ui.card().classes("baldi-app-card baldi-app-card--accent q-pa-lg w-full"):
-                        ui.label("Recognition").classes("baldi-pill q-mb-xs")
-                        ui.label("Letter matching").classes(
-                            "text-h6 text-weight-medium text-grey-9 q-mb-sm"
-                        )
+                with ui.column().classes("col").style("flex: 0 1 380px; min-width: 240px;"):
+                    with ui.card().classes("baldi-app-card baldi-app-card--accent q-pa-md w-full"):
+                        with ui.row().classes("items-baseline justify-between no-wrap q-mb-xs"):
+                            ui.label("Recognition").classes(
+                                "text-subtitle2 text-weight-medium text-grey-9"
+                            )
+                            ui.label("DTW").classes("baldi-pill")
                         ui.label(
-                            "Templates cover A–Z and a–z. Save your own strokes to improve matches."
-                        ).classes("text-body2 text-grey-8 q-mb-lg")
+                            "Templates A–Z / a–z; save strokes to improve matching."
+                        ).classes("text-body2 text-grey-8 q-mb-sm")
 
-                        ui.separator().classes("q-mb-md bg-grey-4")
+                        ui.separator().classes("q-my-sm bg-grey-4")
 
                         ui.label("How to draw").classes(
                             "text-caption text-weight-bold text-grey-7 text-uppercase q-mb-xs"
@@ -337,7 +342,7 @@ def main_page():
                         ui.label("Language").classes(
                             "text-caption text-weight-bold text-grey-7 text-uppercase q-mb-xs"
                         )
-                        ui.toggle(["English", "Arabic"], value="English").classes("q-mb-md")
+                        ui.toggle(["English", "Arabic"], value="English").classes("q-mb-sm")
 
                         label_input = ui.input("Letter label (optional)").props(
                             "clearable outlined dense"
@@ -531,9 +536,9 @@ def main_page():
                             clear_active_paths()
                             ui.notify("Path cleared")
 
-                        ui.separator().classes("q-my-md")
+                        ui.separator().classes("q-my-sm")
 
-                        with ui.column().classes("w-full q-gutter-sm"):
+                        with ui.column().classes("w-full q-gutter-xs"):
                             ui.button("Save as template", on_click=save_template).classes(
                                 "w-full"
                             ).props("unelevated no-caps rounded color=primary")
@@ -546,7 +551,7 @@ def main_page():
 
         with ui.tab_panel(previous_tab):
             with ui.column().classes("w-full").style("max-width: 900px; margin: 0 auto;"):
-                with ui.card().classes("baldi-app-card q-pa-lg w-full"):
+                with ui.card().classes("baldi-app-card q-pa-md w-full"):
                     ui.label("History").classes("baldi-pill q-mb-xs")
                     ui.label("Evaluation log").classes(
                         "text-h6 text-weight-medium text-grey-9 q-mb-md"
@@ -609,7 +614,7 @@ def main_page():
 
                     ui.button("Refresh log", on_click=records_view.refresh).props(
                         "unelevated no-caps rounded outline color=grey-7"
-                    ).classes("q-mb-lg")
+                    ).classes("q-mb-sm")
                     records_view()
 
                     ui.separator().classes("q-mb-md bg-grey-4")
