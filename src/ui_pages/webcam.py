@@ -11,6 +11,7 @@ from nicegui import app, run, ui
 
 from evaluation.letters import LetterEvaluator
 from gestures.gestures import Gestures
+from tracking.ir_tracker import IRTracker
 
 
 srcDir = Path(__file__).resolve().parent.parent
@@ -33,13 +34,43 @@ cap = cv2.VideoCapture(0)
 tracker = Gestures(path)
 evaluator = LetterEvaluator(templates_dir)
 
+# Optional second camera (IR reflector); may be absent on dev machines.
+ir_cap = None
+ir_tracker = None
+try:
+    ir_cap = IRTracker.open_camera(camera_index=1)
+    ir_tracker = IRTracker(camera_index=1)
+except RuntimeError:
+    ir_cap = None
+    ir_tracker = None
+
 latest_frame = None
+latest_ir_frame = None
 SHOW_IMAGE_MODEL = os.getenv("BALDI_SHOW_IMAGE_MODEL", "").strip() in {"1", "true", "True", "yes", "YES"}
 
 # Latest raw frame from the gesture camera (written by a daemon thread so cap.read()
 # never blocks the NiceGUI asyncio loop).
 _gesture_raw = None
 _gesture_lock = threading.Lock()
+
+_ir_raw = None
+_ir_lock = threading.Lock()
+
+# Which stroke source Evaluate / Save use: "gesture" | "ir"
+active_source = "gesture"
+
+
+def snapshot_active_paths():
+    if ir_tracker is not None and active_source == "ir":
+        return ir_tracker.snapshot_paths()
+    return tracker.snapshot_paths()
+
+
+def clear_active_paths():
+    if ir_tracker is not None and active_source == "ir":
+        ir_tracker.clear_path()
+    else:
+        tracker.clear_path()
 
 
 def _gesture_capture_thread():
@@ -50,6 +81,16 @@ def _gesture_capture_thread():
             frame = cv2.flip(frame, 1)
             with _gesture_lock:
                 _gesture_raw = frame
+
+
+def _ir_capture_thread():
+    global _ir_raw
+    while True:
+        ok, frame = ir_cap.read()
+        if ok:
+            frame = cv2.flip(frame, 1)
+            with _ir_lock:
+                _ir_raw = frame
 
 
 def process_frame():
@@ -76,8 +117,31 @@ def process_frame():
     return base64.b64encode(buffer).decode("utf-8")
 
 
+def process_ir_frame():
+    """IR camera: blob-tracked reflector tip and stroke paths (non-blocking read via thread)."""
+    if ir_tracker is None or ir_cap is None:
+        return None
+    with _ir_lock:
+        frame = _ir_raw
+    if frame is None:
+        return None
+    frame = frame.copy()
+    annotated_frame, _ = ir_tracker.detect_ir_tip(frame)
+    for path_pts in ir_tracker.paths:
+        for i in range(1, len(path_pts)):
+            cv2.line(
+                annotated_frame,
+                path_pts[i - 1],
+                path_pts[i],
+                (0, 255, 255),
+                3,
+            )
+    _, buffer = cv2.imencode(".jpg", annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+    return base64.b64encode(buffer).decode("utf-8")
+
+
 async def background_capture():
-    global latest_frame
+    global latest_frame, latest_ir_frame
 
     while True:
         # MediaPipe/OpenCV off the asyncio loop so WebSocket heartbeats are not starved.
@@ -85,18 +149,27 @@ async def background_capture():
         if frame:
             latest_frame = frame
 
+        if ir_tracker is not None:
+            ir_frame = await run.io_bound(process_ir_frame)
+            if ir_frame:
+                latest_ir_frame = ir_frame
+
         await asyncio.sleep(0.02)
 
 
 @app.on_startup
 async def startup():
     threading.Thread(target=_gesture_capture_thread, daemon=True).start()
+    if ir_cap is not None:
+        threading.Thread(target=_ir_capture_thread, daemon=True).start()
     asyncio.create_task(background_capture())
 
 
 @app.on_shutdown
 def shutdown():
     cap.release()
+    if ir_cap is not None:
+        ir_cap.release()
 
 
 @ui.page("/")
@@ -112,25 +185,61 @@ def main_page():
         with ui.tab_panel(record_tab):
             with ui.row().classes("items-start w-full gap-4 flex-wrap justify-center"):
                 with ui.card().style("max-width: 900px; width: 100%;"):
-                    image = ui.interactive_image().style(
+                    source_toggle = None
+                    if ir_tracker is not None:
+                        source_toggle = ui.toggle(
+                            {"gesture": "Hand camera (RGB)", "ir": "IR reflector"},
+                            value="gesture",
+                        ).classes("q-mb-sm w-full justify-center")
+
+                    gesture_display = ui.interactive_image().style(
                         "width:100%; height:auto; max-height:75vh; object-fit:contain;"
                     )
+                    ir_display = None
+                    if ir_tracker is not None:
+                        ir_display = ui.interactive_image().style(
+                            "width:100%; height:auto; max-height:75vh; object-fit:contain; background:#111;"
+                        )
 
-                    def update():
+                    def sync_source_visibility():
+                        global active_source
+                        if source_toggle is not None and ir_display is not None:
+                            active_source = source_toggle.value
+                            gesture_display.set_visibility(active_source == "gesture")
+                            ir_display.set_visibility(active_source == "ir")
+                        else:
+                            active_source = "gesture"
+
+                    sync_source_visibility()
+                    if source_toggle is not None:
+                        source_toggle.on("update:model-value", lambda _: sync_source_visibility())
+
+                    def update_video():
                         if latest_frame:
-                            image.set_source(f"data:image/jpeg;base64,{latest_frame}")
+                            gesture_display.set_source(
+                                f"data:image/jpeg;base64,{latest_frame}"
+                            )
+                        if ir_display is not None and latest_ir_frame:
+                            ir_display.set_source(
+                                f"data:image/jpeg;base64,{latest_ir_frame}"
+                            )
 
-                    ui.timer(0.03, update)
+                    ui.timer(0.03, update_video)
 
                 with ui.card().style("min-width: 260px; max-width: 420px; width: 100%;"):
                     ui.label("Built-in templates for A–Z, a–z. You can save your own for better matching.").classes(
                         "text-sm text-grey-7"
                     )
                     ui.label(
-                        "Drawing: keep your other fingers in a loose fist—only your thumb and index finger move. "
-                        "Pinch those two fingertips together to start recording a stroke; open the pinch to finish. "
-                        "The dot is red while recording and green when idle."
+                        "Hand camera: keep your other fingers in a loose fist—only thumb and index move. "
+                        "Pinch those two fingertips together to record a stroke; open the pinch to finish. "
+                        "Dot is red while recording, green when idle."
                     ).classes("text-sm text-grey-7")
+                    if ir_tracker is not None:
+                        ui.label(
+                            "IR camera: hold the reflector tip still briefly to start or stop drawing a stroke "
+                            "(green = idle, red = drawing). Choose IR above to use these strokes for Evaluate / Save."
+                        ).classes("text-sm text-grey-7")
 
                     ui.label("Please select your language:")
                     ui.toggle(["English", "Arabic"], value="English")
@@ -149,7 +258,7 @@ def main_page():
 
                     async def save_template():
                         label = label_input.value or ""
-                        paths = tracker.snapshot_paths()
+                        paths = snapshot_active_paths()
 
                         def work():
                             traj = evaluator.get_trajectory(paths)
@@ -182,7 +291,7 @@ def main_page():
                         eval_progress.set_visibility(True)
                         try:
                             label = label_input.value or ""
-                            paths = tracker.snapshot_paths()
+                            paths = snapshot_active_paths()
 
                             def work():
                                 traj = evaluator.get_trajectory(paths)
@@ -314,7 +423,7 @@ def main_page():
                             eval_btn.enable()
 
                     def clear_drawing():
-                        tracker.clear_path()
+                        clear_active_paths()
                         ui.notify("Path cleared")
 
                     ui.button("Save as template", on_click=save_template)
