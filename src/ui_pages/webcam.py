@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import os
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -35,14 +36,29 @@ evaluator = LetterEvaluator(templates_dir)
 latest_frame = None
 SHOW_IMAGE_MODEL = os.getenv("BALDI_SHOW_IMAGE_MODEL", "").strip() in {"1", "true", "True", "yes", "YES"}
 
+# Latest raw frame from the gesture camera (written by a daemon thread so cap.read()
+# never blocks the NiceGUI asyncio loop).
+_gesture_raw = None
+_gesture_lock = threading.Lock()
+
+
+def _gesture_capture_thread():
+    global _gesture_raw
+    while True:
+        ok, frame = cap.read()
+        if ok:
+            frame = cv2.flip(frame, 1)
+            with _gesture_lock:
+                _gesture_raw = frame
+
 
 def process_frame():
-    success, frame = cap.read()
-    if not success:
+    with _gesture_lock:
+        frame = _gesture_raw
+    if frame is None:
         return None
 
-    frame = cv2.flip(frame, 1)
-
+    frame = frame.copy()
     annotated_frame, fingertip = tracker.detect_index_fingertip(frame)
 
     # Draw path
@@ -74,6 +90,7 @@ async def background_capture():
 
 @app.on_startup
 async def startup():
+    threading.Thread(target=_gesture_capture_thread, daemon=True).start()
     asyncio.create_task(background_capture())
 
 
