@@ -202,60 +202,82 @@ def shutdown():
 @ui.page("/")
 def main_page():
     try:
-        ui.colors(primary="#1a365d", secondary="#455a64")
+        ui.colors(primary="#0d3b66", secondary="#4a6fa5")
     except Exception:
         pass
 
     ui.add_head_html(
         """
         <style>
-          body { background: #dfe6ee !important; }
-          .q-tab-panels { padding: 8px 12px 16px !important; }
+          body {
+            background: linear-gradient(165deg, #e4edf5 0%, #d8e6f0 38%, #cfdce8 100%) !important;
+            min-height: 100vh;
+          }
+          .q-tab-panels { padding: 12px 16px 24px !important; }
           .baldi-app-card {
-            border-radius: 8px;
-            border: 1px solid #b8c5d0;
-            box-shadow: 0 1px 4px rgba(26, 54, 93, 0.05);
-            background: #f7f9fb;
+            border-radius: 14px;
+            border: 1px solid rgba(13, 59, 102, 0.12);
+            box-shadow: 0 4px 24px rgba(13, 59, 102, 0.07), 0 1px 3px rgba(13, 59, 102, 0.06);
+            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
           }
           .baldi-app-card--accent {
-            border-left: 4px solid #1a365d;
+            border-left: 4px solid #0d3b66;
           }
           .baldi-video-wrap {
-            border-radius: 10px;
+            border-radius: 14px;
             overflow: hidden;
-            background: #0f1419;
-            border: 1px solid #2c3e50;
+            background: radial-gradient(ellipse at center, #1a2836 0%, #0f1419 70%);
+            border: 1px solid rgba(13, 59, 102, 0.35);
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04), 0 8px 32px rgba(0,0,0,0.12);
           }
           .baldi-pill {
-            letter-spacing: 0.06em;
-            font-size: 0.7rem;
+            letter-spacing: 0.08em;
+            font-size: 0.65rem;
             text-transform: uppercase;
-            color: #546e7a;
+            color: #5c7a94;
             font-weight: 600;
+          }
+          .baldi-header-bar {
+            background: linear-gradient(90deg, #0d3b66 0%, #164773 50%, #0d3b66 100%) !important;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 4px 20px rgba(13, 59, 102, 0.25);
+          }
+          .baldi-distance-tip {
+            background: linear-gradient(125deg, rgba(13, 59, 102, 0.07) 0%, rgba(46, 196, 182, 0.08) 100%);
+            border: 1px solid rgba(13, 59, 102, 0.14);
+            border-radius: 12px;
+            padding: 12px 14px;
+          }
+          .baldi-page-shell {
+            max-width: 1280px;
+            margin-left: auto;
+            margin-right: auto;
           }
         </style>
         """,
         shared=True,
     )
 
-    with ui.header().classes("bg-primary text-white shadow-1"):
-        with ui.row().classes("w-full items-center justify-between q-px-md q-py-sm no-wrap"):
+    with ui.header().classes("baldi-header-bar text-white"):
+        with ui.row().classes("w-full items-center justify-between q-px-md q-py-md no-wrap baldi-page-shell"):
             with ui.column().classes("gap-none"):
-                ui.label("BALDI").classes("text-subtitle1 text-weight-bold")
-                ui.label("Handwriting recognition").classes("text-caption").style(
-                    "opacity: 0.9; color: #e8eef4; line-height: 1.2;"
+                ui.label("BALDI").classes("text-h6 text-weight-bold").style("letter-spacing: 0.04em;")
+                ui.label("Handwriting in the air").classes("text-caption").style(
+                    "opacity: 0.88; color: #c5d9ec; line-height: 1.25;"
                 )
-            with ui.tabs().classes("text-white bg-primary").props("dense") as tabs:
+            with ui.tabs().classes("text-white").props("dense indicator-color=white").style(
+                "background: transparent;"
+            ) as tabs:
                 record_tab = ui.tab("New recording")
                 previous_tab = ui.tab("History")
 
     with ui.tab_panels(tabs, value=record_tab).classes("w-full bg-transparent"):
         with ui.tab_panel(record_tab):
             with ui.row().classes(
-                "items-start justify-center w-full q-col-gutter-md flex-wrap"
-            ).style("max-width: 100%; margin: 0;"):
+                "baldi-page-shell items-start justify-center w-full q-col-gutter-lg flex-wrap"
+            ).style("max-width: 100%; margin: 0 auto;"):
                 with ui.column().classes("col").style("flex: 1 1 280px; max-width: min(92vw, 960px); min-width: 240px;"):
-                    with ui.card().classes("baldi-app-card q-pa-md w-full"):
+                    with ui.card().classes("baldi-app-card q-pa-lg w-full"):
                         with ui.row().classes("items-baseline justify-between q-mb-sm no-wrap"):
                             ui.label("Camera preview").classes(
                                 "text-subtitle2 text-weight-medium text-grey-9"
@@ -266,7 +288,27 @@ def main_page():
                             source_toggle = ui.toggle(
                                 {"gesture": "Hand (RGB)", "ir": "IR reflector"},
                                 value="gesture",
-                            ).classes("q-mb-sm w-full justify-center")
+                            ).classes("q-mb-sm w-full justify-center").props(
+                                "no-caps toggle-color=primary"
+                            )
+
+                        gesture_distance_tip = ui.column().classes("w-full q-mb-sm")
+                        with gesture_distance_tip:
+                            with ui.row().classes(
+                                "baldi-distance-tip w-full items-start no-wrap"
+                            ).style("gap: 10px;"):
+                                ui.icon("straighten").classes("text-primary").style(
+                                    "font-size: 1.5rem; opacity: 0.9;"
+                                )
+                                with ui.column().classes("gap-xs col"):
+                                    ui.label("Best distance for hand tracking").classes(
+                                        "text-caption text-weight-bold text-primary"
+                                    )
+                                    ui.label(
+                                        "Hold your hand far enough from the webcam that your full hand "
+                                        "fits comfortably in the frame — about arm’s length usually works best. "
+                                        "Too close, and tracking often gets worse; a bit farther back is easier for the model."
+                                    ).classes("text-body2 text-grey-8").style("line-height: 1.45;")
 
                         with ui.element("div").classes("baldi-video-wrap"):
                             gesture_display = ui.interactive_image().style(
@@ -286,6 +328,7 @@ def main_page():
                                 ir_display.set_visibility(active_source == "ir")
                             else:
                                 active_source = "gesture"
+                            gesture_distance_tip.set_visibility(active_source == "gesture")
 
                         sync_source_visibility()
                         if source_toggle is not None:
@@ -305,7 +348,7 @@ def main_page():
 
                         ui.label(
                             "Record saves MP4 to src/recordings/."
-                        ).classes("text-caption text-grey-7 q-mt-xs")
+                        ).classes("text-caption text-grey-6 q-mt-sm").style("opacity: 0.95;")
 
                         with ui.row().classes("w-full justify-end q-mt-xs"):
                             record_button = ui.button("Record").props(
@@ -313,16 +356,16 @@ def main_page():
                             ).classes("text-weight-medium")
                             record_button.on_click(lambda: toggle_record(record_button))
 
-                with ui.column().classes("col").style("flex: 0 1 380px; min-width: 240px;"):
-                    with ui.card().classes("baldi-app-card baldi-app-card--accent q-pa-md w-full"):
-                        with ui.row().classes("items-baseline justify-between no-wrap q-mb-xs"):
+                with ui.column().classes("col").style("flex: 0 1 400px; min-width: 240px;"):
+                    with ui.card().classes("baldi-app-card baldi-app-card--accent q-pa-lg w-full"):
+                        with ui.row().classes("items-baseline justify-between no-wrap q-mb-sm"):
                             ui.label("Recognition").classes(
-                                "text-subtitle2 text-weight-medium text-grey-9"
+                                "text-subtitle1 text-weight-medium text-grey-9"
                             )
                             ui.label("DTW").classes("baldi-pill")
                         ui.label(
-                            "Templates A–Z / a–z; save strokes to improve matching."
-                        ).classes("text-body2 text-grey-8 q-mb-sm")
+                            "Templates use uppercase English letters A–Z only. Save your own strokes to improve matching."
+                        ).classes("text-body2 text-grey-8 q-mb-md").style("line-height: 1.5;")
 
                         ui.separator().classes("q-my-sm bg-grey-4")
 
@@ -331,8 +374,9 @@ def main_page():
                         )
                         ui.label(
                             "Hand camera: other fingers in a loose fist; only thumb and index move. "
-                            "Pinch to start a stroke, release to finish. Red dot while drawing, green when idle."
-                        ).classes("text-body2 text-grey-8 q-mb-sm")
+                            "Pinch to start a stroke, release to finish. Red dot while drawing, green when idle. "
+                            "Stay far enough from the camera that your whole hand stays in frame (about arm’s length)."
+                        ).classes("text-body2 text-grey-8 q-mb-sm").style("line-height: 1.45;")
                         if ir_tracker is not None:
                             ui.label(
                                 "IR camera: hold the tip still briefly to start or stop a stroke. "
@@ -345,8 +389,12 @@ def main_page():
                         ui.toggle(["English", "Arabic"], value="English").classes("q-mb-sm")
 
                         label_input = ui.input("Letter label (optional)").props(
-                            "clearable outlined dense"
-                        ).classes("w-full q-mb-sm")
+                            "clearable outlined dense hint='Uppercase A–Z only'"
+                        ).classes("w-full q-mb-xs")
+
+                        ui.label(
+                            "Uppercase A–Z only for letter labels. Whatever you type is converted to uppercase for saving and matching."
+                        ).classes("text-caption text-grey-7 q-mb-sm").style("line-height: 1.35;")
 
                         ui.label(
                             "Scores show template match (0–100%). Debug confidence is stored in the evaluation log."
@@ -367,7 +415,10 @@ def main_page():
                             image_pred_label.set_visibility(False)
 
                         async def save_template():
-                            label = label_input.value or ""
+                            raw = (label_input.value or "").strip()
+                            label = raw.upper()
+                            if raw:
+                                label_input.value = label
                             paths = snapshot_active_paths()
 
                             def work():
@@ -400,7 +451,10 @@ def main_page():
                             eval_btn.disable()
                             eval_progress.set_visibility(True)
                             try:
-                                label = label_input.value or ""
+                                raw = (label_input.value or "").strip()
+                                label = raw.upper()
+                                if raw:
+                                    label_input.value = label
                                 paths = snapshot_active_paths()
 
                                 def work():
@@ -514,7 +568,7 @@ def main_page():
 
                                 if result and not result["has_templates"]:
                                     score_label.text = (
-                                        f"No template for '{label}'. Use a letter in A–Z / a–z, or save your drawing as a template."
+                                        f"No template for '{label}'. Use an uppercase letter A–Z, or save your drawing as a template."
                                     )
                                     ui.notify("No template for this letter")
                                     return
@@ -550,8 +604,8 @@ def main_page():
                             ).props("outline no-caps rounded color=grey-8")
 
         with ui.tab_panel(previous_tab):
-            with ui.column().classes("w-full").style("max-width: 900px; margin: 0 auto;"):
-                with ui.card().classes("baldi-app-card q-pa-md w-full"):
+            with ui.column().classes("w-full baldi-page-shell").style("margin: 0 auto;"):
+                with ui.card().classes("baldi-app-card q-pa-lg w-full"):
                     ui.label("History").classes("baldi-pill q-mb-xs")
                     ui.label("Evaluation log").classes(
                         "text-h6 text-weight-medium text-grey-9 q-mb-md"
