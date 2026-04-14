@@ -153,7 +153,8 @@ export class DrawingSession {
   private drawing = false
   private prevPoint: Point | null = null
   private smoothed: Point | null = null
-  private path: Trajectory = []
+  private paths: Trajectory[] = []
+  private currentPath: Trajectory | null = null
 
   // Tunables similar to the Python version
   private readonly pinchEnter = 0.042
@@ -167,7 +168,8 @@ export class DrawingSession {
     this.drawing = false
     this.prevPoint = null
     this.smoothed = null
-    this.path = []
+    this.paths = []
+    this.currentPath = null
   }
 
   isDrawing(): boolean {
@@ -179,7 +181,13 @@ export class DrawingSession {
   }
 
   flattenedPath(): Trajectory {
-    return this.path
+    const out: Trajectory = []
+    for (const stroke of this.paths) out.push(...stroke)
+    return out
+  }
+
+  allPaths(): Trajectory[] {
+    return this.paths
   }
 
   updateFromHandResult(res: HandResult | null, width: number, height: number): void {
@@ -189,6 +197,7 @@ export class DrawingSession {
       this.smoothed = null
       if (this.wasPinching) {
         this.drawing = false
+        this.currentPath = null
       }
       this.wasPinching = false
       return
@@ -227,10 +236,12 @@ export class DrawingSession {
   private updatePath(point: Point, pinchActive: boolean): void {
     if (pinchActive && !this.wasPinching) {
       this.drawing = true
-      this.path = []
-      this.path.push(point)
+      this.currentPath = []
+      this.paths.push(this.currentPath)
+      this.currentPath.push(point)
     } else if (!pinchActive && this.wasPinching) {
       this.drawing = false
+      this.currentPath = null
     }
     this.wasPinching = pinchActive
 
@@ -239,14 +250,14 @@ export class DrawingSession {
       return
     }
 
-    if (this.drawing && pinchActive) {
+    if (this.drawing && pinchActive && this.currentPath) {
       const dx = point.x - this.prevPoint.x
       const dy = point.y - this.prevPoint.y
       const dist = Math.hypot(dx, dy)
       if (dist >= this.sampleMinPx) {
         const steps = Math.floor(dist / this.sampleMinPx)
         if (steps <= 1) {
-          this.path.push(point)
+          this.currentPath.push(point)
         } else {
           const x0 = this.prevPoint.x
           const y0 = this.prevPoint.y
@@ -254,7 +265,10 @@ export class DrawingSession {
           const y1 = point.y
           for (let k = 1; k <= steps; k++) {
             const t = k / steps
-            this.path.push({ x: Math.round(x0 + t * (x1 - x0)), y: Math.round(y0 + t * (y1 - y0)) })
+            this.currentPath.push({
+              x: Math.round(x0 + t * (x1 - x0)),
+              y: Math.round(y0 + t * (y1 - y0)),
+            })
           }
         }
       }
