@@ -100,7 +100,7 @@ export default function App() {
       }
     }
 
-    const drawOverlay = (traj: Trajectory, isDrawing: boolean) => {
+    const drawOverlay = (paths: Trajectory[], isDrawing: boolean) => {
       const canvas = overlayRef.current
       const video = videoRef.current
       if (!canvas || !video) return
@@ -115,8 +115,9 @@ export default function App() {
       if (!ctx) return
       ctx.clearRect(0, 0, w, h)
 
-      // stroke
-      if (traj.length >= 2) {
+      // stroke(s) — keep all completed strokes until Clear
+      const anyStroke = paths.some((p) => p.length >= 2)
+      if (anyStroke) {
         ctx.save()
         ctx.lineWidth = 4
         ctx.lineCap = 'round'
@@ -125,10 +126,13 @@ export default function App() {
         ctx.shadowColor = 'rgba(0,0,0,0.25)'
         ctx.shadowBlur = 6
 
-        ctx.beginPath()
-        ctx.moveTo(traj[0].x, traj[0].y)
-        for (let i = 1; i < traj.length; i++) ctx.lineTo(traj[i].x, traj[i].y)
-        ctx.stroke()
+        for (const traj of paths) {
+          if (traj.length < 2) continue
+          ctx.beginPath()
+          ctx.moveTo(traj[0].x, traj[0].y)
+          for (let i = 1; i < traj.length; i++) ctx.lineTo(traj[i].x, traj[i].y)
+          ctx.stroke()
+        }
         ctx.restore()
       }
 
@@ -154,7 +158,7 @@ export default function App() {
 
       const res = handTracker.detect(video)
       sessionRef.current.updateFromHandResult(res, video.videoWidth, video.videoHeight)
-      drawOverlay(sessionRef.current.flattenedPath(), sessionRef.current.isDrawing())
+      drawOverlay(sessionRef.current.allPaths(), sessionRef.current.isDrawing())
 
       rafRef.current = requestAnimationFrame(loop)
     }
